@@ -1,0 +1,2 @@
+# Keep the workflows/ directory in git even when empty.
+# Reference reusable workflows + per-use-case examples — see CONTRIBUTING.md.
