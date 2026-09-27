@@ -1,0 +1,2 @@
+# Keep the pipelines/ directory in git even when empty.
+# Pipelines live here as folders (pipeline.yaml + README.md) — see CONTRIBUTING.md.

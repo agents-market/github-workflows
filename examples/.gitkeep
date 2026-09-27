@@ -1,0 +1,2 @@
+# Keep the examples/ directory in git even when empty.
+# Sample integrations per language stack (TypeScript, Python, Rust, Solidity).

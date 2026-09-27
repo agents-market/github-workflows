@@ -1,0 +1,74 @@
+# pipeline-action CI/CD for github-workflows repo
+# Detects changed pipelines, bumps version, publishes to agentsmarket marketplace.
+
+name: publish-pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pipelines/**'
+  workflow_dispatch:
+    inputs:
+      pipeline:
+        description: 'Pipeline slug to publish (e.g., style-review). Empty = all changed pipelines.'
+        required: false
+        type: string
+      bump:
+        description: 'Version bump type (overrides auto-detect)'
+        required: false
+        type: choice
+        options: [auto, patch, minor, major]
+        default: 'auto'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.repository == 'agents-market/github-workflows'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Detect changed pipelines
+        id: detect
+        run: |
+          if [ -n "${{ inputs.pipeline }}" ]; then
+            CHANGED="${{ inputs.pipeline }}"
+          else
+            # Compare HEAD to previous commit on main
+            CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'pipelines/*/pipeline.yaml' | xargs -I {} dirname {} | xargs -I {} basename {} | sort -u | tr '\n' ',' | sed 's/,$//')
+            if [ -z "$CHANGED" ]; then
+              echo "No pipeline changes detected"
+              echo "changed=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Pipelines to publish: $CHANGED"
+
+      - name: Publish each pipeline
+        if: steps.detect.outputs.changed != ''
+        env:
+          AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
+        run: |
+          IFS=',' read -ra PIPELINES <<< "${{ steps.detect.outputs.changed }}"
+          for SLUG in "${PIPELINES[@]}"; do
+            echo "::group::Publishing $SLUG"
+            npx @agentsmarket/cli pipeline publish \
+              "pipelines/$SLUG/pipeline.yaml" \
+              --readme "pipelines/$SLUG/README.md" \
+              --bump-version "${{ inputs.bump || 'minor' }}"
+            echo "::endgroup::"
+          done

@@ -1,92 +1,100 @@
-# agents-market/code-review
+# agents-market/github-workflows
 
-**Community example pipeline** — automated PR vulnerability detection using the
-[agentsmarket.world](https://agentsmarket.world) marketplace for AI agent
-capabilities.
+> **Public community repo for AI pipelines + reference GitHub workflows.**
+> Pipelines are published to [agentsmarket.world](https://agentsmarket.world) marketplace from here.
+> Consumers install via [`@agentsmarket/cli`](https://www.npmjs.com/package/@agentsmarket/cli) → `agentsmarket pipeline install <slug>@<version>`.
 
-> **Auto-synced** from
-> [`agents-market/main`](https://github.com/agents-market/main) via
-> `repository_dispatch`. Pipeline source of truth:
-> `examples/pipelines/code-review-vulnerability-detection.yaml`.
+## Mission
+
+End-to-end fix for the 3-place pipeline drift vector: today a single pipeline YAML lives in:
+
+```
+agents-market/main/examples/pipelines/<name>.yaml   ← canonical
+web3eco/shared-actions/.github/pipelines/<name>.yaml ← verbatim copy
+web3eco/shared-actions/.github/workflows/*.yml      ← copy of copy (embedded inline)
+```
+
+**This repo is the single source of truth.** Pipelines live here as folders:
+
+```
+pipelines/<name>/
+├── pipeline.yaml       ← spec (stages only, no metadata)
+└── README.md           ← frontmatter (metadata) + markdown description
+```
+
+Consumers (any GitHub repo) install pipelines from this repo via the marketplace CLI.
+
+## What's here
+
+### `pipelines/` — canonical pipelines
+
+Each subdirectory is one pipeline. Currently in flight:
+
+| Pipeline | Status | Used by |
+|----------|--------|---------|
+| _(none yet — G3 in epic plan)_ | — | — |
+
+### `workflows/` — reference GitHub Actions workflows
+
+Thin reusable workflows + examples showing how to invoke pipelines via `agents-market/pipeline-action@v0.4.x`.
+
+### `examples/` — sample integrations
+
+End-to-end examples per language stack (TypeScript, Python, Rust, Solidity).
+
+### `.github/workflows/publish.yml`
+
+CI/CD: PR-merge to main → auto-detect changed pipelines → bump version → publish to marketplace.
+
+## Quick start (consumer)
+
+```bash
+# Install a pipeline from this repo to your local project
+agentsmarket pipeline install style-review@v1.0.0
+# → creates .agentsmarket/pipelines/style-review@v1.0.0/{pipeline.yaml,README.md,metadata.json}
+
+# Use it in your GitHub workflow
+```
+
+```yaml
+# .github/workflows/ai-review.yml
+- name: Install pipeline
+  run: agentsmarket pipeline install style-review@v1.0.0 code-review-security-audit@v1.0.0
+  env:
+    AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
+
+- name: Run style-review
+  uses: agents-market/pipeline-action@v0.4.x
+  with:
+    pipeline_file: .agentsmarket/pipelines/style-review@v1.0.0/pipeline.yaml
+```
+
+Full guide: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Architecture (3-tier)
+
+```
+agents-market/
+├── main                  ← monorepo: server + cli + landing + pipeline-runtime src
+├── pipeline-action       ← standalone GH Action (bundled, published to Marketplace)
+└── github-workflows      ← THIS REPO. Pipelines + reference workflows.
+```
+
+`web3eco/shared-actions` (and any consumer) installs pipelines from here via the marketplace.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). External contributions welcome via PR — see `PULL_REQUEST_TEMPLATE.md`.
 
 ## Status
 
-[![Pipeline security review](https://github.com/agents-market/code-review/actions/workflows/security-review.yml/badge.svg)](https://github.com/agents-market/code-review/actions/workflows/security-review.yml)
+- **Migration from `agents-market/code-review`**: in progress. See [TASKS row 114](https://github.com/agents-market/main/blob/main/TASKS.md#row-114) for the epic plan.
+- **Canonical pipelines**: 0 migrated yet (G0-G4 in the epic). Pilot = `style-review`, then `code-review-security-audit`.
 
-This repo dogfoods **`agents-market/pipeline-action@v1`** — every PR is reviewed
-by an agentsmarket pipeline via the published GitHub Action.
+## Legacy
 
-## Quick start (5 lines)
+The old `code-review-vulnerability-detection` pipeline (`.pipeline.yaml` in repo root) is still here for backwards compat — the existing dogfooding security-review workflow uses it. Migration plan: it will move to `pipelines/code-review-vulnerability-detection/` in a future epic step.
 
-Add to your own repo's `.github/workflows/`:
+## License
 
-```yaml
-name: Pipeline security review
-on: [pull_request]
-permissions:
-  contents: read
-  pull-requests: read
-jobs:
-  review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: agents-market/pipeline-action@v1
-        with:
-          pipeline_file: .github/pipelines/my-pipeline.yaml
-          mock: 'true'  # remove for real LLM calls
-```
-
-Full guide: [`agents-market/pipeline-action/docs/ACTIONS.md`](https://github.com/agents-market/pipeline-action/blob/main/docs/ACTIONS.md).
-
-## What this pipeline does
-
-When invoked against a GitHub pull request, this pipeline:
-
-1. **Gathers PR context** — uses `github-pr-context@v1` skill to fetch PR title,
-   author, and diff (capped at 8000 lines)
-2. **Scans for vulnerabilities** — invokes the configured model (default
-   `MiniMax-M3`) with OWASP Top 10 prompt, returns structured findings
-   (severity, comments, summary, review event)
-3. **Posts inline comments** — if severity ≠ none, uses `github-pr-comment@v1`
-   skill to post the top finding as a line-level review comment
-4. **Submits the review** — uses `github-review-submit@v1` skill to submit
-   APPROVE / REQUEST_CHANGES / COMMENT on the PR
-
-## Usage
-
-This pipeline is a YAML contract consumed by:
-
-- The `agentsmarket.world` Worker at `https://api.agentsmarket.world/v1/pipelines/invoke`
-- The `@agentsmarket/cli` package locally via
-  `agentsmarket invoke --pipeline /v1/skill/agents-market/code-review@v1.0.1`
-- Any GitHub Actions consumer via `agents-market/pipeline-action@v1` (see Quick start)
-
-### Required inputs
-
-| Input    | Type   | Description                                      |
-|----------|--------|--------------------------------------------------|
-| `pr_number` | string | GitHub PR number (e.g. `"42"`)                  |
-| `repo`      | string | Target repo in `owner/name` format              |
-
-### Required env vars
-
-| Var          | Description                                      |
-|--------------|--------------------------------------------------|
-| `PR_NUMBER`  | Pass-through of `pr_number` input                |
-| `REPO`       | Pass-through of `repo` input                     |
-| `GITHUB_SHA` | Head commit SHA of the PR                        |
-
-### Required skills (marketplace-fetched)
-
-This pipeline uses three marketplace skills, version-pinned to `@v1`:
-
-| Skill | Purpose |
-|---|---|
-| `github-pr-context@v1` | Fetch PR metadata + diff |
-| `github-pr-comment@v1` | Post inline review comment |
-| `github-review-submit@v1` | Submit the final PR review |
-
-Each skill signs every request with EIP-191 (`personal_sign`) and pays the
-skill provider in USDC on Base via EIP-3009 `transferWithAuthorization`.
-Operator keypair never leaves your machine.
+MIT — see [`LICENSE`](LICENSE).
