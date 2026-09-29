@@ -1,0 +1,19 @@
+name: style-review mock test
+description: Valid diff produces deterministic mock style findings in mock mode.
+pipeline: ./pipeline.yaml
+mock: true
+inputs:
+  code_diff: "diff --git a/x.ts b/x.ts\n+const x=1\n+function Foo(){return x}"
+  language: typescript
+  focus_area: all
+  severity_threshold: low
+assertions:
+  - type: exists
+    path: analyze_style.findings
+  - type: exists
+    path: aggregate_style.summary
+  - type: exists
+    path: aggregate_style.recommendations
+  - type: regex
+    path: aggregate_style.markdown_report
+    pattern: Mock report
