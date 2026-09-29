@@ -1,3 +1,18 @@
+# name: style-review
+# version: 1.0.0
+# description: AI-powered code style review for diffs. Identifies naming inconsistencies, missing types, unused exports, magic numbers, and codebase-pattern violations. Outputs structured findings with severity + line + category + fix suggestion + estimated impact. Vertical wedge expansion: code style review as paid AI agent service at $0.001/call.
+# price_usdc: 1000
+# tags: ["style", "code-review", "vertical-wedge"]
+# public_preview: AI code style review of diffs. Structured findings (severity + category + fix + impact), aggregate style score 0-10, prioritized refactors. $0.001/call.
+#
+# Reference example for pitch deck / customer demo. NOT a deployment — caller MUST
+# supply executor_url via CLI flag or server routing config (runtime concept).
+#
+# Input contract:
+#   - code_diff (string, required, 1..50000 chars) — Git diff or unified patch
+#   - language (enum typescript/javascript/python/rust/go/solidity/generic, default generic)
+#   - focus_area (enum naming/types/exports/magic_numbers/all, default all)
+#   - severity_threshold (enum low/medium/high/critical, default low)
 name: style-review
 version: 1.0.0
 description: AI code style review of diffs — identifies naming inconsistencies, missing types, unused exports, magic numbers, and codebase-pattern violations. Structured findings with severity + category + fix + impact. Vertical wedge expansion path — code style review as paid AI agent service.
