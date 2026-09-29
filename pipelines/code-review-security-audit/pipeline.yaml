@@ -1,0 +1,178 @@
+# name: code-review-security-audit
+# version: 1.0.0
+# description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate risk score, and prioritized remediation recommendations. Vertical wedge: code review as paid AI agent service at $0.001/call.
+# price_usdc: 1000      # 0.001 USDC per invocation (~$1 per 1000 reviews)
+# tags: ["security", "code-review", "vertical-wedge"]
+# public_preview: AI security review of code diffs. Structured findings (severity + CWE + fix), aggregate risk score, prioritized recommendations. $0.001/call.
+#
+# Reference example for pitch deck / customer demo. NOT a deployment — caller MUST
+# supply executor_url via CLI flag or server routing config (runtime concept).
+#
+# Input validation: code_diff (string, required, 1..50000 chars); language (enum ts/js/py/rs/go/solidity/generic, default generic); focus_area (enum security|performance|style|all, default security); severity_threshold (enum low|medium|high|critical, default medium).
+# Output schema: findings[{severity,line,description,fix_suggestion,cwe_id,confidence}], summary{total_findings,critical_count,high_count,medium_count,low_count,overall_risk_score 0-10}, recommendations[str] (≤5, prioritized).
+name: code-review-security-audit
+version: 1.0.0
+description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate summary with risk score, and prioritized remediation recommendations.
+author_id: agentsmarket-team
+license: MIT
+
+inputs:
+  code_diff:
+    type: string
+    required: true
+    description: "Git diff or unified patch text (1..50000 chars). Hunk headers should be standard `@@ -a,b +c,d @@` format."
+    min_length: 1
+    max_length: 50000
+  language:
+    type: string
+    required: false
+    default: generic
+    enum: [typescript, javascript, python, rust, go, solidity, generic]
+    description: "Primary language in the diff (helps the reviewer pick language-specific CWEs; default: generic)."
+  focus_area:
+    type: string
+    required: false
+    default: security
+    enum: [security, performance, style, all]
+    description: "What the reviewer should prioritize (default: security)."
+  severity_threshold:
+    type: string
+    required: false
+    default: medium
+    enum: [low, medium, high, critical]
+    description: "Minimum severity to include in findings array (filters out noise; default: medium)."
+
+outputs:
+  findings:
+    format: structured_json
+    description: "Array of security findings: {severity, line, description, fix_suggestion, cwe_id, confidence}."
+    fields: [findings]
+  summary:
+    format: structured_json
+    description: "Aggregate counts + overall risk score (0-10): {total_findings, critical_count, high_count, medium_count, low_count, overall_risk_score}."
+    fields: [summary]
+  recommendations:
+    format: structured_json
+    description: "Array of ≤5 prioritized remediation strings (≤200 chars each, ordered by impact)."
+    fields: [recommendations]
+
+defaults:
+  model: MiniMax-M3
+
+stages:
+  # === Stage 1: Pattern scan — cheap pre-filter on obvious issue classes ===
+  - id: pattern_scan
+    provider: minimax
+    model: MiniMax-M2.7
+    system: ${SECURITY_SCAN_TONE:-You are a security engineer reviewing a code diff. Identify OWASP Top 10 issues, hardcoded secrets, injection vectors, insecure crypto, broken access control. Be precise — false positives erode trust.}
+    prompt: |
+      Scan the following {{language}} diff for security issues.
+      Focus area: {{focus_area}}. Severity floor: {{severity_threshold}} — drop findings below this.
+
+      For each finding emit a JSON object with:
+        - `id` (1-based index)
+        - `severity` (critical | high | medium | low)
+        - `line` (integer line number from the diff, or null)
+        - `description` (≤200 chars, plain English)
+        - `fix_suggestion` (≤300 chars, concrete code change)
+        - `cwe_id` (string CWE id e.g. "CWE-89", or null)
+        - `confidence` (float 0.0-1.0)
+
+      Return JSON:
+      {
+        "findings": [...],
+        "stats": { "lines_scanned": n, "hunks_scanned": n }
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+
+      Diff:
+      ```
+      $input.code_diff
+      ```
+    output_format: structured_json
+    fields: [findings, stats]
+
+  # === Stage 2: LLM deep review — catches business-logic flaws the scanner misses ===
+  - id: deep_review
+    provider: minimax
+    model: MiniMax-M3
+    depends_on: [pattern_scan]
+    system: You are a senior application security reviewer. Read the pattern scanner's findings, then re-read the diff yourself to catch business-logic flaws, IDOR, race conditions, prototype pollution in JS, pickle abuse in Python, signature replay in Solidity, etc. Do not duplicate pattern-scan findings.
+    prompt: |
+      Pattern scanner found these candidates in the diff:
+      $stages.pattern_scan.output
+
+      Original diff:
+      ```
+      $input.code_diff
+      ```
+
+      For each NEW finding the scanner missed (different line OR different issue class), emit a JSON object with the same shape as the scanner's findings. For scanner findings you AGREE with, copy them verbatim. For false positives, emit them in `rejected` with a one-line reason.
+
+      Return JSON:
+      {
+        "findings": [...],
+        "rejected": [{"id": int, "reason": str}],
+        "new_findings_count": int
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [findings, rejected, new_findings_count]
+
+  # === Stage 3: Aggregate, score, recommend — emits the final structured report ===
+  - id: aggregate
+    provider: minimax
+    model: MiniMax-M3
+    depends_on: [deep_review]
+    system: You compute security metrics and prioritize fixes. Use a 0-10 risk scale where 10 = exploitable RCE in production and 0 = no findings. Order recommendations by impact (critical first).
+    prompt: |
+      Compute the final security report.
+
+      Inputs to merge:
+        - Pattern scan: $stages.pattern_scan.output
+        - Deep review:  $stages.deep_review.output
+
+      Output a JSON object with EXACTLY these three fields:
+        - `summary`: {
+            "total_findings": int,
+            "critical_count": int,
+            "high_count": int,
+            "medium_count": int,
+            "low_count": int,
+            "overall_risk_score": float (0-10)
+          }
+        - `recommendations`: array of ≤5 prioritized remediation strings (≤200 chars each, ordered by impact: critical → high → medium → low)
+        - `markdown_report`: Markdown summary suitable for a PR comment (≤50 lines, structure: Summary, Critical/High/Medium sections, Recommendations)
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [summary, recommendations, markdown_report]
+    # M5 — Stage output validation. JSON Schema draft-07 subset; runtime
+    # re-runs the stage once (`single` retry) when the model returns a
+    # shape that misses required fields. On exhaustion the invoke route
+    # returns HTTP 500 OUTPUT_VALIDATION_FAILED with structured envelope.
+    output_schema:
+      type: object
+      required: [summary, recommendations, markdown_report]
+      additionalProperties: false
+      properties:
+        summary:
+          type: object
+          required: [total_findings, critical_count, high_count, medium_count, low_count, overall_risk_score]
+          properties:
+            total_findings: { type: integer }
+            critical_count: { type: integer }
+            high_count: { type: integer }
+            medium_count: { type: integer }
+            low_count: { type: integer }
+            overall_risk_score: { type: number }
+        recommendations:
+          type: array
+          maxItems: 5
+          items: { type: string, maxLength: 200 }
+        markdown_report:
+          type: string
+          maxLength: 8000
+    output_retry: single

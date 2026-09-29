@@ -1,0 +1,23 @@
+name: code-review-security-audit mock test
+description: Valid diff produces deterministic mock findings with severity + CWE in mock mode.
+pipeline: ./pipeline.yaml
+mock: true
+inputs:
+  code_diff: "diff --git a/app.js b/app.js\n+const q = 'SELECT * FROM users WHERE id=' + req.params.id;\n+const pwd = 'hardcoded-secret';"
+  language: javascript
+  focus_area: security
+  severity_threshold: medium
+assertions:
+  - type: exists
+    path: pattern_scan.findings
+  - type: gte
+    path: aggregate.summary.high_count
+    value: 1
+  - type: gte
+    path: aggregate.summary.overall_risk_score
+    value: 1
+  - type: exists
+    path: aggregate.recommendations
+  - type: regex
+    path: aggregate.markdown_report
+    pattern: Mock report
