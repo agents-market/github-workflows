@@ -1,0 +1,195 @@
+name: style-review
+version: 1.0.0
+description: AI code style review of diffs — identifies naming inconsistencies, missing types, unused exports, magic numbers, and codebase-pattern violations. Structured findings with severity + category + fix + impact. Vertical wedge expansion path — code style review as paid AI agent service.
+author_id: agentsmarket-team
+license: MIT
+
+inputs:
+  code_diff:
+    type: string
+    required: true
+    description: "Git diff or unified patch text (1..50000 chars)."
+    min_length: 1
+    max_length: 50000
+  language:
+    type: string
+    required: false
+    default: generic
+    enum: [typescript, javascript, python, rust, go, solidity, generic]
+    description: "Primary language in the diff."
+  focus_area:
+    type: string
+    required: false
+    default: all
+    enum: [naming, types, exports, magic_numbers, all]
+    description: "What the reviewer should prioritize (default: all)."
+  severity_threshold:
+    type: string
+    required: false
+    default: low
+    enum: [low, medium, high, critical]
+    description: "Minimum severity to include in findings array (default: low — style nits)."
+
+outputs:
+  findings:
+    format: structured_json
+    description: "Array of style findings: {severity, line, category, description, fix_suggestion, estimated_impact, confidence}."
+    fields: [findings]
+  summary:
+    format: structured_json
+    description: "Aggregate counts + style score (0-10): {total_findings, critical_count, high_count, medium_count, low_count, style_score}."
+    fields: [summary]
+  recommendations:
+    format: structured_json
+    description: "Array of ≤5 prioritized refactor strings (≤200 chars each)."
+    fields: [recommendations]
+  markdown_report:
+    format: structured_json
+    description: "Markdown summary suitable for PR comment (≤50 lines)."
+    fields: [markdown_report]
+
+defaults:
+  model: MiniMax-M3
+
+stages:
+  - id: profile_style
+    provider: minimax
+    model: MiniMax-M2.7
+    system: "You are a code style profiler. Quickly identify naming patterns, type annotations, exported symbols, and numeric/string literals in a code diff. Be precise — false positives waste review time."
+    prompt: |
+      Profile the following {{language}} diff for style patterns.
+
+      For each region emit a JSON object with:
+        - `region` (string — function/class/block identifier)
+        - `line_range` (string — e.g., "42-67")
+        - `pattern` (naming | type | export | literal | comment | other)
+        - `observation` (string — what you notice)
+
+      Return JSON:
+      {
+        "regions": [{"region": "...", "line_range": "...", "pattern": "...", "observation": "..."}, ...],
+        "stats": { "regions_count": n, "language": "{{language}}" }
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+
+      Diff:
+      ```
+      $input.code_diff
+      ```
+    output_format: structured_json
+    fields: [regions, stats]
+
+  - id: analyze_style
+    provider: minimax
+    model: MiniMax-M3
+    depends_on: [profile_style]
+    system: "You are a senior code reviewer focused on style and consistency. For each region, identify style issues: naming inconsistencies (camelCase vs snake_case, abbreviations, inconsistent prefixes), missing TypeScript types (any usage, missing return types), unused exports, magic numbers (unexplained numeric literals > 1 digit), inline comments lacking context. Provide: severity (critical/high/medium/low), short description (≤200 chars), fix suggestion (≤300 chars), estimated_impact (string — e.g., 'reduces type errors', 'improves refactor safety', 'clarifies magic number intent'), and confidence (0.0-1.0)."
+    prompt: |
+      Analyze the following regions for style issues.
+
+      Regions (from profile):
+      $stages.profile_style.output
+
+      Severity floor: {{severity_threshold}} — drop findings below this.
+
+      Focus area: {{focus_area}} — prioritize accordingly.
+
+      For EACH issue, emit a JSON object with:
+        - `file` (string — path of file containing the issue, e.g., "src/api/users.ts")
+        - `line` (integer — line number of the issue, NOT a range)
+        - `severity` (critical | high | medium | low)
+        - `category` (string — naming | types | exports | magic_numbers | comments)
+        - `description` (string ≤200 chars)
+        - `fix_suggestion` (string ≤300 chars — concrete refactor)
+        - `estimated_impact` (string — measurable improvement claim)
+        - `confidence` (float 0.0-1.0)
+
+      Example finding:
+        {"file": "src/api/users.ts", "line": 42, "severity": "high", "category": "naming", "description": "Variable name `usr_cnt` uses abbreviation; prefer `user_count`."}
+
+      IMPORTANT: Do NOT use `region` or `line_range` — emit explicit `file` (string) and `line` (integer) for each finding. Without `file`, the finding cannot be anchored to a PR comment.
+
+      Return JSON:
+      {
+        "findings": [...],
+        "summary": {
+          "total_findings": int,
+          "regions_analyzed": int
+        }
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [findings, summary]
+
+  - id: aggregate_style
+    provider: minimax
+    model: MiniMax-M3
+    depends_on: [analyze_style]
+    system: "You compute style metrics and prioritize refactors. Use a 0-10 style_score scale where 10 = perfectly consistent with codebase conventions and 0 = severe style violations (inconsistent naming, missing types, unused exports). Order recommendations by impact (biggest consistency wins first)."
+    prompt: |
+      Compute the final style review report.
+
+      Inputs to merge:
+        - Profile: $stages.profile_style.output
+        - Analyze: $stages.analyze_style.output
+
+      Output a JSON object with EXACTLY these four fields:
+        - `summary`: {
+            "total_findings": int,
+            "critical_count": int,
+            "high_count": int,
+            "medium_count": int,
+            "low_count": int,
+            "style_score": float (0-10)
+          }
+        - `recommendations`: array of ≤5 prioritized refactor strings (≤200 chars each, ordered by impact)
+        - `markdown_report`: Markdown summary suitable for a PR comment (≤50 lines, structure: Summary, Critical/High/Medium sections, Top 5 refactors with estimated impact)
+        - `findings`: array of {file, line, severity, category, description, fix_suggestion, estimated_impact, confidence}
+
+      Example finding item:
+        {"file": "src/api/users.ts", "line": 42, "severity": "high", "category": "naming", "description": "..."}
+
+      IMPORTANT: Do NOT use `region` or `line_range` in any finding — emit explicit `file` (string) and `line` (integer) for each finding. Without `file`, the finding cannot be anchored to a PR comment.
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [summary, recommendations, markdown_report, findings]
+    output_schema:
+      type: object
+      required: [summary, recommendations, markdown_report, findings]
+      additionalProperties: false
+      properties:
+        summary:
+          type: object
+          required: [total_findings, critical_count, high_count, medium_count, low_count, style_score]
+          properties:
+            total_findings: { type: integer }
+            critical_count: { type: integer }
+            high_count: { type: integer }
+            medium_count: { type: integer }
+            low_count: { type: integer }
+            style_score: { type: number }
+        recommendations:
+          type: array
+          maxItems: 5
+          items: { type: string, maxLength: 200 }
+        markdown_report:
+          type: string
+          maxLength: 8000
+        findings:
+          type: array
+          items:
+            type: object
+            required: [file, line, severity, category, description, fix_suggestion, estimated_impact, confidence]
+            properties:
+              file: { type: string }
+              line: { type: integer }
+              severity: { type: string, enum: [critical, high, medium, low] }
+              category: { type: string }
+              description: { type: string }
+              fix_suggestion: { type: string }
+              estimated_impact: { type: string }
+              confidence: { type: number }
+    output_retry: single
