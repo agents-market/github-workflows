@@ -1,0 +1,39 @@
+name: code-review-security-audit G6-fixture mock test
+description: Validates that the pipeline processes the G6 test fixture (5 intentional CWEs) and produces structured findings + aggregate risk score in mock mode. Diagnostic only — live CI run blocked on user actions (AGENTSMARKET_PRIVATE_KEY + MiniMax balance).
+pipeline: ./pipeline.yaml
+mock: true
+inputs:
+  code_diff: |
+    /**
+     * G6 test fixture — intentional security issues for AI code-review pipeline.
+     * DO NOT MERGE — diagnostic only.
+     */
+    const HARDCODED_API_KEY = 'sk-prod-7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c';
+    const HARDCODED_DB_PASSWORD = 'admin123!@#';
+    function hashPasswordLegacy(password: string): string {
+      const crypto = require('crypto');
+      return crypto.createHash('md5').update(password).digest('hex');
+    }
+    function dynamicEval(userInput: string): any { return eval(userInput); }
+    function renderUserHtml(div: HTMLElement, userContent: string): void { div.innerHTML = userContent; }
+    function mergeUserConfig(target: any, userInput: any): any { return Object.assign(target, JSON.parse(userInput)); }
+  language: typescript
+  focus_area: security
+  severity_threshold: medium
+assertions:
+  - type: exists
+    path: pattern_scan.findings
+  - type: gte
+    path: aggregate.summary.total_findings
+    value: 1
+  - type: gte
+    path: aggregate.summary.high_count
+    value: 1
+  - type: gte
+    path: aggregate.summary.overall_risk_score
+    value: 1
+  - type: exists
+    path: aggregate.recommendations
+  - type: regex
+    path: aggregate.markdown_report
+    pattern: Mock report
