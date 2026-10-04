@@ -2,6 +2,10 @@
 # =============================================================================
 
 name: code-review-vulnerability-detection
+author_id: '0x44986097Fd624d3B17De6f82fdB829Db189990f7'
+cost:
+  max_per_run_usdc: 0.10
+  on_exceed: fail
 version: 1.0.1
 defaults:
   model: MiniMax-M3
@@ -16,10 +20,10 @@ inputs:
 
 stages:
   - id: gather-context
-    uses: github-pr-context@v1
+    uses: github-pr-context@1.0.0
     inputs:
-      pr_number: "${PR_NUMBER}"
-      repo: "${REPO}"
+      pr_number: "${PR_NUMBER:-1}"
+      repo: "${REPO:-example/repo}"
       include_diff: "true"
       max_diff_lines: 8000
 
@@ -48,21 +52,21 @@ stages:
   - id: post-inline-comments
     when: "stages.vulnerability-scan.outputs.severity != 'none'"
     uses:
-      - github-pr-comment@v1
-      - github-pr-comment@v1
+      - github-pr-comment@1.0.0
+      - github-pr-comment@1.0.0
     inputs:
-      pr_number: "${PR_NUMBER}"
-      repo: "${REPO}"
-      commit_sha: "${GITHUB_SHA}"
+      pr_number: "${PR_NUMBER:-1}"
+      repo: "${REPO:-example/repo}"
+      commit_sha: "${GITHUB_SHA:-HEAD}"
       body: "${stages.vulnerability-scan.outputs.comments[0].body}"
       path: "${stages.vulnerability-scan.outputs.comments[0].path}"
       line: "${stages.vulnerability-scan.outputs.comments[0].line}"
 
   - id: submit-review
-    uses: github-review-submit@v1
+    uses: github-review-submit@1.0.0
     inputs:
-      pr_number: "${PR_NUMBER}"
-      repo: "${REPO}"
-      commit_sha: "${GITHUB_SHA}"
+      pr_number: "${PR_NUMBER:-1}"
+      repo: "${REPO:-example/repo}"
+      commit_sha: "${GITHUB_SHA:-HEAD}"
       event: "${stages.vulnerability-scan.outputs.event}"
       body: "${stages.vulnerability-scan.outputs.summary}"
