@@ -1,0 +1,251 @@
+# Reference consumer workflow — AI code review via agents-market pipelines.
+# Doubles as this repo's dogfood run, so recommended and actual wiring cannot drift.
+#
+# Five decisions, each fixing a defect observed on web3eco/blockchain PR #83
+# during the consumer pilot. A naive wiring gets all five wrong.
+#
+# 1. concurrency + cancel-in-progress — a naive trigger re-runs on every
+#    `synchronize`, so four pushes = four runs = four sets of duplicate
+#    comments. Grouping by PR number makes a new commit supersede the in-flight
+#    run. cancel-in-progress is restricted to pull_request: on `push` to a
+#    release branch an in-flight run must not die, and a cancelled required
+#    check blocks the merge it was guarding.
+# 2. One sticky comment per pipeline, upserted by HTML marker, not per run.
+# 3. Inline threads are synced, not appended — an already-reported finding is
+#    not re-posted, and a thread whose anchor left the diff is auto-resolved.
+#    Otherwise resolve-conversation work grows without bound.
+# 4. Ephemeral agent identity, no AGENTSMARKET_PRIVATE_KEY. `pipeline install`
+#    needs an EIP-191 signature but no registration, balance, or funded
+#    account, and `init` mints a throwaway key before any network call. Only
+#    MINIMAX_API_KEY is needed — local execution calls the provider directly
+#    and moves no USDC. Set the private key ONLY for remote executor_url runs.
+# 5. Cost is labelled notional — total_cost_usdc is a market-rate estimate;
+#    local mode charges nothing, and printing it bare reads as an invoice.
+#    Requires: MINIMAX_API_KEY repo secret, nothing else.
+
+name: AI Review
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+env:
+  # Pinned, never floating: @agentsmarket/cli@latest is what pulled in a
+  # release that declared an unpublished dependency and failed with E404.
+  CLI_VERSION: '0.11.2'
+
+jobs:
+  review:
+    name: ${{ matrix.pipeline.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Context is matrix.pipeline.*. An `include:` list with no base key
+        # spreads flat, so matrix.pipeline resolves empty and every
+        # ${{ matrix.pipeline.x }} renders as nothing.
+        pipeline:
+          - slug: code-review-security-audit
+            version: '1.0.1'
+            focus_area: security
+            severity: medium
+            label: security audit
+          - slug: style-review
+            version: '1.0.1'
+            focus_area: all
+            severity: low
+            label: style review
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          # 22, not 20: openai@7.x declares engines.node >= 22 (EBADENGINE on 20).
+          node-version: '22'
+
+      - name: Install agentsmarket CLI
+        run: npm install -g @agentsmarket/cli@${{ env.CLI_VERSION }}
+
+      - name: Mint throwaway agent identity
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.config/agentsmarket
+          chmod 700 ~/.config/agentsmarket
+          agentsmarket init
+          chmod 600 ~/.config/agentsmarket/agent.key
+
+      - name: Install pipeline from marketplace
+        run: agentsmarket pipeline install ${{ matrix.pipeline.slug }}@${{ matrix.pipeline.version }}
+
+      - name: Collect diff
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          FOCUS: ${{ matrix.pipeline.focus_area }}
+          SEVERITY: ${{ matrix.pipeline.severity }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE" "$HEAD" 2>/dev/null || true
+          D=$(git diff --no-color "$BASE...$HEAD" 2>/dev/null || true)
+          [ -n "$D" ] || D=$(git diff --no-color HEAD~1 HEAD 2>/dev/null || true)
+          [ -n "$D" ] || D="(empty diff)"
+          printf '%s' "${D:0:48000}" > /tmp/d.txt
+          python3 -c "
+          import json, os
+          d = open('/tmp/d.txt', encoding='utf-8', errors='replace').read()
+          p = {'code_diff': d, 'language': 'generic',
+               'focus_area': os.environ['FOCUS'],
+               'severity_threshold': os.environ['SEVERITY']}
+          print('inputs_json=' + json.dumps(p))
+          " >> "$GITHUB_OUTPUT"
+
+      - name: Run pipeline
+        id: review
+        # SHA inlined: `env` is invalid in `uses:` — fails validation with 0 jobs.
+        uses: agents-market/pipeline-action@0ed368079a4ebf4e5272bc1694cffedc26d59cc6 # v0.4.3
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        with:
+          provider: minimax
+          model: MiniMax-M3
+          inputs_json: ${{ steps.diff.outputs.inputs_json }}
+          pipeline_file: .agentsmarket/pipelines/${{ matrix.pipeline.slug }}@${{ matrix.pipeline.version }}/pipeline.yaml
+
+      - name: Upsert summary comment
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          MARKER: ${{ matrix.pipeline.slug }}
+          RESULT: ${{ steps.review.outputs.result_json }}
+          COST: ${{ steps.review.outputs.total_cost_usdc }}
+          DURATION: ${{ steps.review.outputs.total_ms }}
+          COUNTS: ${{ steps.review.outputs.findings_count_json }}
+          RUN_STATUS: ${{ steps.review.outputs.status }}
+        with:
+          script: |
+            try {
+              const marker = `<!-- am:${process.env.MARKER} -->`;
+              const { data: prior } = await github.rest.issues.listComments({
+                ...context.repo, issue_number: context.issue.number, per_page: 100,
+              });
+              const existing = prior.find(c => c.body && c.body.includes(marker));
+              let b = marker + '\n';
+              b += `## AI Review — ${process.env.MARKER}\n\n`;
+              if (process.env.RUN_STATUS !== 'passed' || !process.env.RESULT) {
+                b += `⚠️ Pipeline did not complete (\`${process.env.RUN_STATUS || 'no status'}\`). `;
+                b += `See the [run log](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).\n`;
+              } else {
+                b += `| Metric | Value |\n|---|---:|\n`;
+                b += `| Duration | ${(Number(process.env.DURATION || 0) / 1000).toFixed(1)}s |\n`;
+                b += `| Findings | ${process.env.COUNTS || 'n/a'} |\n`;
+                b += `| Market-equivalent cost | ${process.env.COST || '0'} USDC |\n\n`;
+                b += `> Cost is a market-rate estimate of the tokens consumed. This pipeline `;
+                b += `ran locally in the Actions runner — **nothing was charged**.\n\n`;
+                let md = '';
+                try {
+                  const rec = JSON.parse(process.env.RESULT || '{}');
+                  for (const v of Object.values(rec)) {
+                    try {
+                      const o = JSON.parse(v);
+                      if (o && typeof o.markdown_report === 'string') md = o.markdown_report;
+                    } catch {}
+                  }
+                } catch {}
+                b += md ? md.slice(0, 8000) + '\n'
+                        : '_This pipeline emits no narrative report — see inline comments._\n';
+              }
+              if (existing) {
+                await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body: b });
+              } else {
+                await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body: b });
+              }
+            } catch (e) {
+              core.setFailed(`summary comment: ${e.message}`);
+            }
+
+      - name: Sync inline review threads
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          FINDINGS: ${{ steps.review.outputs.findings_json }}
+        with:
+          script: |
+            const BOT = 'github-actions[bot]';
+            try {
+              let findings = [];
+              try { findings = JSON.parse(process.env.FINDINGS || '[]'); } catch {}
+              const valid = findings.filter(f =>
+                f && typeof f.file === 'string' && f.file.length > 0
+                && Number.isFinite(f.line) && f.line > 0);
+
+              const { data: q } = await github.graphql(`
+                query($owner:String!,$repo:String!,$number:Int!){
+                  repository(owner:$owner,name:$repo){
+                    pullRequest(number:$number){
+                      reviewThreads(first:100){
+                        nodes{ id isResolved isOutdated path line
+                               comments(first:1){ nodes{ author{ login } } } }
+                      } } } }`,
+                { owner: context.repo.owner, repo: context.repo.repo, number: context.issue.number });
+              const threads = q.repository.pullRequest.reviewThreads.nodes;
+              const ours = threads.filter(t =>
+                t.comments.nodes[0] && t.comments.nodes[0].author
+                && t.comments.nodes[0].author.login === BOT);
+              const live = new Set(ours.filter(t => !t.isResolved && !t.isOutdated)
+                .map(t => `${t.path}:${t.line}`));
+
+              const { data: files } = await github.rest.pulls.listFiles({
+                ...context.repo, pull_number: context.issue.number, per_page: 100,
+              });
+              const inDiff = new Set(files.map(f => f.filename));
+
+              let resolved = 0;
+              for (const t of ours) {
+                if (!t.isResolved && (t.isOutdated || !inDiff.has(t.path))) {
+                  await github.graphql(
+                    `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }`,
+                    { id: t.id });
+                  resolved++;
+                }
+              }
+
+              const emoji = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
+              let posted = 0, skipped = 0;
+              for (const f of valid) {
+                const key = `${f.file}:${f.line}`;
+                if (live.has(key) || !inDiff.has(f.file)) { skipped++; continue; }
+                let b = `${emoji[f.severity] || '⚪'} **${String(f.severity || 'unknown').toUpperCase()}**`;
+                if (f.cwe) b += ` \`${f.cwe}\``;
+                b += ` (conf ${Math.round((f.confidence || 0) * 100)}%): ${f.message || ''}`;
+                if (f.recommendation) b += `\n\n💡 ${f.recommendation}`;
+                try {
+                  await github.rest.pulls.createReviewComment({
+                    ...context.repo, pull_number: context.issue.number,
+                    commit_id: context.payload.pull_request.head.sha,
+                    path: f.file, line: f.line, side: 'RIGHT', body: b,
+                  });
+                  posted++; live.add(key);
+                } catch (e) {
+                  core.warning(`inline skip ${key}: ${e.message}`);
+                }
+              }
+              core.info(`threads — ${posted} posted, ${resolved} resolved, ${live.size} live, ${skipped} suppressed`);
+            } catch (e) {
+              core.setFailed(`thread sync: ${e.message}`);
+            }
