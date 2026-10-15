@@ -118,6 +118,31 @@ Must be:
 - No hardcoded secrets (use `secrets:` references)
 - Single-purpose (no kitchen-sink workflows)
 
+## Pinning the pipeline action
+
+Always pin to a **full commit SHA**, not a tag:
+
+```yaml
+uses: agents-market/pipeline-action@0ed368079a4ebf4e5272bc1694cffedc26d59cc6 # v0.4.3
+```
+
+A tag is a moving pointer. Tag `v1` sat broken for three weeks — it pointed at a
+commit whose `action.yml` was not parseable YAML, so any consumer copying
+`@v1` from the README got a red check failing at *Set up job*, with a parser
+error that named neither the repository nor the ref. Re-cut on 2026-10-16; see
+[pipeline-action#2](https://github.com/agents-market/pipeline-action/pull/2).
+
+A SHA turns "the action moved under me" into a deliberate, reviewable bump.
+
+Two related traps when writing workflows by hand — both cost a round-trip on
+[PR #3](https://github.com/agents-market/github-workflows/pull/3):
+
+- The `env` context is **not available in `uses:`** (only `github`, `needs`,
+  `strategy`, `matrix`, `inputs`, `vars`). Referencing `${{ env.X }}` there fails
+  whole-workflow validation with zero jobs and no error message.
+- `matrix: {include: [...]}` with no base key spreads its entries **flat**, so
+  `matrix.pipeline.slug` resolves to nothing. Use `matrix: {pipeline: [...]}`.
+
 ## License
 
 By contributing, you agree to license your contribution under MIT (matching this repo).
