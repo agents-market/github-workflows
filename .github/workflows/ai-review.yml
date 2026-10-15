@@ -1,6 +1,5 @@
 # Reference consumer workflow — AI code review via agents-market pipelines.
-# Doubles as the dogfood run for THIS repo, so the wiring we recommend and the
-# wiring we actually run cannot drift apart.
+# Doubles as this repo's dogfood run, so recommended and actual wiring cannot drift.
 #
 # Five decisions, each fixing a defect observed on web3eco/blockchain PR #83
 # during the consumer pilot. A naive wiring gets all five wrong.
@@ -11,19 +10,18 @@
 #    run. cancel-in-progress is restricted to pull_request: on `push` to a
 #    release branch an in-flight run must not die, and a cancelled required
 #    check blocks the merge it was guarding.
-# 2. One sticky comment per pipeline, upserted by HTML marker. A naive
-#    createComment produces one comment per run.
+# 2. One sticky comment per pipeline, upserted by HTML marker, not per run.
 # 3. Inline threads are synced, not appended — an already-reported finding is
 #    not re-posted, and a thread whose anchor left the diff is auto-resolved.
-#    Otherwise the PR accumulates unbounded resolve-conversation work.
+#    Otherwise resolve-conversation work grows without bound.
 # 4. Ephemeral agent identity, no AGENTSMARKET_PRIVATE_KEY. `pipeline install`
 #    needs an EIP-191 signature but no registration, balance, or funded
 #    account, and `init` mints a throwaway key before any network call. Only
 #    MINIMAX_API_KEY is needed — local execution calls the provider directly
 #    and moves no USDC. Set the private key ONLY for remote executor_url runs.
-# 5. Cost is labelled notional — total_cost_usdc is a market-rate estimate of
-#    consumed tokens; in local mode nothing is charged, and printing it bare
-#    reads as an invoice. Requires: MINIMAX_API_KEY repo secret, nothing else.
+# 5. Cost is labelled notional — total_cost_usdc is a market-rate estimate;
+#    local mode charges nothing, and printing it bare reads as an invoice.
+#    Requires: MINIMAX_API_KEY repo secret, nothing else.
 
 name: AI Review
 
@@ -54,7 +52,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
+        # Context is matrix.pipeline.*. An `include:` list with no base key
+        # spreads flat, so matrix.pipeline resolves empty and every
+        # ${{ matrix.pipeline.x }} renders as nothing.
+        pipeline:
           - slug: code-review-security-audit
             version: '1.0.1'
             focus_area: security
@@ -72,7 +73,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 22, not 20: openai@7.x declares engines.node >= 22 (EBADENGINE on 20).
+          node-version: '22'
 
       - name: Install agentsmarket CLI
         run: npm install -g @agentsmarket/cli@${{ env.CLI_VERSION }}
@@ -113,9 +115,7 @@ jobs:
 
       - name: Run pipeline
         id: review
-        # SHA inlined: `env` is not available in `uses:` (only github / needs /
-        # strategy / matrix / inputs / vars) — using it fails validation with
-        # zero jobs and no useful error.
+        # SHA inlined: `env` is invalid in `uses:` — fails validation with 0 jobs.
         uses: agents-market/pipeline-action@0ed368079a4ebf4e5272bc1694cffedc26d59cc6 # v0.4.3
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
