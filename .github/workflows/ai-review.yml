@@ -23,9 +23,7 @@
 #    and moves no USDC. Set the private key ONLY for remote executor_url runs.
 # 5. Cost is labelled notional — total_cost_usdc is a market-rate estimate of
 #    consumed tokens; in local mode nothing is charged, and printing it bare
-#    reads as an invoice.
-#
-# Requires: MINIMAX_API_KEY repo secret. Nothing else.
+#    reads as an invoice. Requires: MINIMAX_API_KEY repo secret, nothing else.
 
 name: AI Review
 
@@ -44,10 +42,9 @@ permissions:
   issues: write
 
 env:
+  # Pinned, never floating: @agentsmarket/cli@latest is what pulled in a
+  # release that declared an unpublished dependency and failed with E404.
   CLI_VERSION: '0.11.2'
-  # SHA pin. Both v0.4.4 and the floating v1 exist and move under this repo;
-  # a reference workflow that floats is a reference workflow that breaks.
-  ACTION_REF: '0ed368079a4ebf4e5272bc1694cffedc26d59cc6' # v0.4.3
 
 jobs:
   review:
@@ -116,7 +113,10 @@ jobs:
 
       - name: Run pipeline
         id: review
-        uses: agents-market/pipeline-action@${{ env.ACTION_REF }}
+        # SHA inlined: `env` is not available in `uses:` (only github / needs /
+        # strategy / matrix / inputs / vars) — using it fails validation with
+        # zero jobs and no useful error.
+        uses: agents-market/pipeline-action@0ed368079a4ebf4e5272bc1694cffedc26d59cc6 # v0.4.3
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:
