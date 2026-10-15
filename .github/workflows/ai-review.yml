@@ -7,21 +7,19 @@
 # 1. concurrency + cancel-in-progress — a naive trigger re-runs on every
 #    `synchronize`, so four pushes = four runs = four sets of duplicate
 #    comments. Grouping by PR number makes a new commit supersede the in-flight
-#    run. cancel-in-progress is restricted to pull_request: on `push` to a
-#    release branch an in-flight run must not die, and a cancelled required
-#    check blocks the merge it was guarding.
+#    run. cancel-in-progress is restricted to pull_request: a cancelled required
+#    check blocks the merge it was guarding, and a release push must not die.
 # 2. One sticky comment per pipeline, upserted by HTML marker, not per run.
 # 3. Inline threads are synced, not appended — an already-reported finding is
 #    not re-posted, and a thread whose anchor left the diff is auto-resolved.
-#    Otherwise resolve-conversation work grows without bound.
 # 4. Ephemeral agent identity, no AGENTSMARKET_PRIVATE_KEY. `pipeline install`
 #    needs an EIP-191 signature but no registration, balance, or funded
 #    account, and `init` mints a throwaway key before any network call. Only
-#    MINIMAX_API_KEY is needed — local execution calls the provider directly
-#    and moves no USDC. Set the private key ONLY for remote executor_url runs.
+#    MINIMAX_API_KEY is needed — local execution moves no USDC. Set the private
+#    key ONLY for remote executor_url runs.
 # 5. Cost is labelled notional — total_cost_usdc is a market-rate estimate;
 #    local mode charges nothing, and printing it bare reads as an invoice.
-#    Requires: MINIMAX_API_KEY repo secret, nothing else.
+#    Requires only a MINIMAX_API_KEY repo secret.
 
 name: AI Review
 
@@ -40,8 +38,7 @@ permissions:
   issues: write
 
 env:
-  # Pinned, never floating: @agentsmarket/cli@latest is what pulled in a
-  # release that declared an unpublished dependency and failed with E404.
+  # Pinned, never floating — @latest once pulled a release with an unpublished dep (E404).
   CLI_VERSION: '0.11.2'
 
 jobs:
@@ -71,9 +68,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 22, not 20: openai@7.x declares engines.node >= 22 (EBADENGINE on 20).
       - uses: actions/setup-node@v4
         with:
-          # 22, not 20: openai@7.x declares engines.node >= 22 (EBADENGINE on 20).
           node-version: '22'
 
       - name: Install agentsmarket CLI
@@ -194,7 +191,7 @@ jobs:
                 f && typeof f.file === 'string' && f.file.length > 0
                 && Number.isFinite(f.line) && f.line > 0);
 
-              const { data: q } = await github.graphql(`
+              const q = await github.graphql(`
                 query($owner:String!,$repo:String!,$number:Int!){
                   repository(owner:$owner,name:$repo){
                     pullRequest(number:$number){
@@ -203,6 +200,7 @@ jobs:
                                comments(first:1){ nodes{ author{ login } } } }
                       } } } }`,
                 { owner: context.repo.owner, repo: context.repo.repo, number: context.issue.number });
+              if (!q || !q.repository) throw new Error('graphql returned no repository — nothing to sync');
               const threads = q.repository.pullRequest.reviewThreads.nodes;
               const ours = threads.filter(t =>
                 t.comments.nodes[0] && t.comments.nodes[0].author
@@ -247,5 +245,7 @@ jobs:
               }
               core.info(`threads — ${posted} posted, ${resolved} resolved, ${live.size} live, ${skipped} suppressed`);
             } catch (e) {
-              core.setFailed(`thread sync: ${e.message}`);
+              core.warning(`thread sync FAILED — inline threads not synced: ${e.message}`);
+              await core.summary.addHeading('Inline thread sync failed', 3)
+                .addRaw(e.message).write();
             }
