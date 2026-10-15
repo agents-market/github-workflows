@@ -1,28 +1,21 @@
 # Reference consumer workflow — AI code review via agents-market pipelines.
-# Doubles as this repo's dogfood run, so recommended and actual wiring cannot drift.
-#
-# Five decisions, each fixing a defect observed on web3eco/blockchain PR #83
-# during the consumer pilot. A naive wiring gets all five wrong.
+# Doubles as this repo's dogfood run, so recommended and actual wiring cannot
+# drift. Five decisions, each fixing a defect seen on web3eco/blockchain PR #83;
+# a naive wiring gets all five wrong. Traps and pinning rules: CONTRIBUTING.md.
 #
 # 1. concurrency + cancel-in-progress — a naive trigger re-runs on every
-#    `synchronize`, so four pushes = four runs = four sets of duplicate
-#    comments. Grouping by PR number makes a new commit supersede the in-flight
-#    run. cancel-in-progress is restricted to pull_request: on `push` to a
-#    release branch an in-flight run must not die, and a cancelled required
-#    check blocks the merge it was guarding.
+#    `synchronize`, so four pushes = four duplicate comment sets. Grouping by PR
+#    number makes a new commit supersede the in-flight run. cancel-in-progress
+#    is pull_request-only: a cancelled required check blocks its own merge.
 # 2. One sticky comment per pipeline, upserted by HTML marker, not per run.
 # 3. Inline threads are synced, not appended — an already-reported finding is
-#    not re-posted, and a thread whose anchor left the diff is auto-resolved.
-#    Otherwise resolve-conversation work grows without bound.
+#    not re-posted and a stale anchor is auto-resolved, so resolve work is bounded.
 # 4. Ephemeral agent identity, no AGENTSMARKET_PRIVATE_KEY. `pipeline install`
-#    needs an EIP-191 signature but no registration, balance, or funded
-#    account, and `init` mints a throwaway key before any network call. Only
-#    MINIMAX_API_KEY is needed — local execution calls the provider directly
-#    and moves no USDC. Set the private key ONLY for remote executor_url runs.
-# 5. Cost is labelled notional — total_cost_usdc is a market-rate estimate;
-#    local mode charges nothing, and printing it bare reads as an invoice.
-#    Requires: MINIMAX_API_KEY repo secret, nothing else.
-
+#    needs an EIP-191 signature but no registration, balance, or funded account,
+#    and `init` mints a throwaway key before any network call. Only
+#    MINIMAX_API_KEY is needed — the private key is for remote executor_url runs.
+# 5. Cost is labelled notional — total_cost_usdc is a market-rate estimate and
+#    local mode charges nothing, so bare, it reads as an invoice.
 name: AI Review
 
 on:
@@ -40,9 +33,7 @@ permissions:
   issues: write
 
 env:
-  # Pinned, never floating: @agentsmarket/cli@latest is what pulled in a
-  # release that declared an unpublished dependency and failed with E404.
-  CLI_VERSION: '0.11.2'
+  CLI_VERSION: '0.11.2'   # pinned: @latest once pulled a release with an unpublished dep (E404)
 
 jobs:
   review:
@@ -71,9 +62,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      # node 22, not 20: openai@7.x declares engines.node >= 22 (EBADENGINE on 20)
       - uses: actions/setup-node@v4
         with:
-          # 22, not 20: openai@7.x declares engines.node >= 22 (EBADENGINE on 20).
           node-version: '22'
 
       - name: Install agentsmarket CLI
@@ -184,9 +175,14 @@ jobs:
         uses: actions/github-script@v7
         env:
           FINDINGS: ${{ steps.review.outputs.findings_json }}
+          MARKER: ${{ matrix.pipeline.slug }}
         with:
           script: |
-            const BOT = 'github-actions[bot]';
+            // Own threads via a body marker, never by actor login: REST calls the
+            // Actions bot `github-actions[bot]`, GraphQL calls it `github-actions`, so a
+            // login test matches nothing and every finding is re-posted. The marker also
+            // keeps each matrix job off the other pipeline's threads.
+            const MARK = `<!-- am:${process.env.MARKER} -->`;
             try {
               let findings = [];
               try { findings = JSON.parse(process.env.FINDINGS || '[]'); } catch {}
@@ -194,19 +190,21 @@ jobs:
                 f && typeof f.file === 'string' && f.file.length > 0
                 && Number.isFinite(f.line) && f.line > 0);
 
-              const { data: q } = await github.graphql(`
+              const q = await github.graphql(`
                 query($owner:String!,$repo:String!,$number:Int!){
                   repository(owner:$owner,name:$repo){
                     pullRequest(number:$number){
                       reviewThreads(first:100){
                         nodes{ id isResolved isOutdated path line
-                               comments(first:1){ nodes{ author{ login } } } }
+                               comments(first:1){ nodes{ body } } }
                       } } } }`,
                 { owner: context.repo.owner, repo: context.repo.repo, number: context.issue.number });
+              if (!q || !q.repository) throw new Error('graphql returned no repository — nothing to sync');
               const threads = q.repository.pullRequest.reviewThreads.nodes;
-              const ours = threads.filter(t =>
-                t.comments.nodes[0] && t.comments.nodes[0].author
-                && t.comments.nodes[0].author.login === BOT);
+              const ours = threads.filter(t => {
+                const first = t.comments.nodes[0];
+                return first && typeof first.body === 'string' && first.body.includes(MARK);
+              });
               const live = new Set(ours.filter(t => !t.isResolved && !t.isOutdated)
                 .map(t => `${t.path}:${t.line}`));
 
@@ -230,7 +228,7 @@ jobs:
               for (const f of valid) {
                 const key = `${f.file}:${f.line}`;
                 if (live.has(key) || !inDiff.has(f.file)) { skipped++; continue; }
-                let b = `${emoji[f.severity] || '⚪'} **${String(f.severity || 'unknown').toUpperCase()}**`;
+                let b = `${MARK}\n${emoji[f.severity] || '⚪'} **${String(f.severity || 'unknown').toUpperCase()}**`;
                 if (f.cwe) b += ` \`${f.cwe}\``;
                 b += ` (conf ${Math.round((f.confidence || 0) * 100)}%): ${f.message || ''}`;
                 if (f.recommendation) b += `\n\n💡 ${f.recommendation}`;
@@ -245,7 +243,9 @@ jobs:
                   core.warning(`inline skip ${key}: ${e.message}`);
                 }
               }
-              core.info(`threads — ${posted} posted, ${resolved} resolved, ${live.size} live, ${skipped} suppressed`);
+              core.info(`threads(${process.env.MARKER}) — ${posted} posted, ${resolved} resolved, ${live.size} live, ${skipped} suppressed`);
             } catch (e) {
-              core.setFailed(`thread sync: ${e.message}`);
+              core.warning(`thread sync FAILED — inline threads not synced: ${e.message}`);
+              await core.summary.addHeading('Inline thread sync failed', 3)
+                .addRaw(e.message).write();
             }
