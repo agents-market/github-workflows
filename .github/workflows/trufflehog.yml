@@ -1,0 +1,87 @@
+# Secret scanning. The compensating control for everything documented in
+# agentsmarket — Ключи и личности: we chose to keep identities in SOPS and
+# accept that some of them were once written into notes by hand. Rotation was
+# ruled out on cost grounds. This workflow is what makes that choice auditable
+# rather than merely convenient.
+#
+# Two modes, because they answer different questions:
+#
+#   diff mode      (pull_request, push) — gates. Only what this change touches.
+#   history mode   (schedule, workflow_dispatch) — advisory. Everything ever
+#                  committed, including commits that were rewritten.
+#
+# History mode is the one that would have caught the treasury key before it
+# reached a note. It is on a weekly schedule rather than dispatch-only so it
+# runs without anyone remembering to ask.
+#
+# `continue-on-error` is deliberate in history mode. A finding in an old commit
+# cannot be fixed by opening a PR, and blocking every push on it would train
+# everyone to ignore the check. The gate is on diff mode; history mode is a
+# detector with a memory.
+
+name: TruffleHog
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Sunday 04:17 UTC. Off the hour so this does not queue behind every other
+    # scheduled workflow in the org.
+    - cron: '17 4 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan-diff:
+    name: scan changed files (gating)
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 0 = full history. Required even for diff mode: the action diffs the
+          # base..head range, and a shallow clone leaves it unable to resolve
+          # the merge base on older PRs.
+          fetch-depth: 0
+
+      - uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
+        with:
+          base: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head: ${{ github.event.pull_request.head.sha || github.event.after }}
+          # verified,unknown: verified secrets are proven live by being used
+          # against the provider; unknown means the detector matched but could
+          # not confirm. Dropping `unknown` would hide most findings, because
+          # scanning a public repo leaks nothing to verify against.
+          extra_args: --results=verified,unknown
+
+  scan-history:
+    name: scan full history (advisory)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Scan every commit
+        continue-on-error: true
+        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
+        with:
+          extra_args: --results=verified,unknown
+
+      - name: What a finding here means
+        run: |
+          echo "### History scan" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Advisory by design — this run is not gating." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "A hit here is in an old commit and cannot be fixed by a PR." >> "$GITHUB_STEP_SUMMARY"
+          echo "Rotation is the only real remedy. Before rotating, check whether the" >> "$GITHUB_STEP_SUMMARY"
+          echo "identity is already in SOPS and what its blast radius is:" >> "$GITHUB_STEP_SUMMARY"
+          echo "for treasury, rotation means republishing 11 pipelines and 5 skills." >> "$GITHUB_STEP_SUMMARY"
