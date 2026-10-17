@@ -24,7 +24,7 @@ jobs:
     with:
       # Version published to the marketplace. Raise it when a pipeline is
       # republished; the workflows here pin an explicit version on purpose.
-      pipeline_version: '1.0.1'
+      pipeline_version: '2.0.3'
 
       # Optional overrides. Leave them out to keep each pipeline's own default —
       # the security pipeline defaults to focus_area "security", the style
@@ -32,10 +32,10 @@ jobs:
       # focus_area: all
       # severity: low
 
-      # "true" (default) reports findings but does not fail the job, so a flaky
-      # model cannot block your PRs. Pass "false" to make it a required check
-      # once you trust it to be stable. It is a string, not a boolean, because
-      # GitHub Actions expressions coerce a missing boolean to false.
-      advisory: 'true'
+      # Default false: the review fails loudly when a pipeline fails, so a broken
+      # review is visible instead of silently green. Pass "true" if a flaky
+      # model must not be allowed to block your PRs. It is a string, not a
+      # boolean, because GitHub Actions expressions coerce a missing boolean.
+      advisory: 'false'
     secrets:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}

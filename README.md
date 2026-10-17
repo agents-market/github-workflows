@@ -63,11 +63,11 @@ reviewable, not because CI checks them.
 commit SHA. The review logic lives in that one file, so a fix ships here once
 and every consumer gets it on the next pin bump.
 
-Inputs are optional. `pipeline_version` defaults to `1.0.1`; `focus_area` and
+Inputs are optional. `pipeline_version` defaults to `2.0.3`; `focus_area` and
 `severity` are left unset on purpose, so each pipeline keeps its own default
-(`security` for the audit, `all` for style). `advisory` is a string, `"true"`
-by default: findings are reported but a failing pipeline does not block the
-PR. Pass `"false"` to make it a required check.
+(`security` for the audit, `all` for style). `advisory` is a string, `"false"`
+by default: a failing pipeline fails the job, so a broken review is visible
+rather than silently green. Pass `"true"` to downgrade that to a warning.
 
 For wiring a pipeline directly rather than through the review workflow, see
 `agents-market/pipeline-action@v0.4.x`.
