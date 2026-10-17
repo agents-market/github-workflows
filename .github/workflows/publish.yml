@@ -59,7 +59,13 @@ jobs:
             if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
               BASE="HEAD~1"
             fi
-            CHANGED=$(git diff --name-only "$BASE" HEAD -- 'pipelines/*/pipeline.yaml' \
+            # README.md as well as pipeline.yaml: the README frontmatter becomes
+            # the marketplace listing and ships inside the bundle, so a
+            # README-only fix has to republish. #23 corrected two README
+            # versions and this detection missed it — the run succeeded having
+            # published nothing.
+            CHANGED=$(git diff --name-only "$BASE" HEAD \
+                -- 'pipelines/*/pipeline.yaml' 'pipelines/*/README.md' \
               | xargs -r -I {} dirname {} | xargs -r -I {} basename {} \
               | sort -u | tr '\n' ',' | sed 's/,$//')
             if [ -z "$CHANGED" ]; then
