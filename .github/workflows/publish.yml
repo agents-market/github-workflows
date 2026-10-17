@@ -87,6 +87,20 @@ jobs:
               echo "::error::pipelines/$SLUG/README.md is missing — publish needs it for the listing"
               exit 1
             }
+
+            # The README frontmatter ships to consumers inside the installed
+            # bundle and becomes the marketplace listing, so a version that
+            # disagrees with pipeline.yaml is a lie told in two places: the page
+            # says one version, `install <slug>@<version>` accepts another.
+            # style-review and code-review-security-audit sat at 2.0.3 with
+            # READMEs still declaring 1.0.0 from the September pilot.
+            SPEC_VERSION=$(grep -m1 -E '^version:' "pipelines/$SLUG/pipeline.yaml" | tr -d ' \r' | cut -d: -f2)
+            README_VERSION=$(grep -m1 -E '^version:' "pipelines/$SLUG/README.md" | tr -d ' \r' | cut -d: -f2)
+            if [ "$SPEC_VERSION" != "$README_VERSION" ]; then
+              echo "::error::pipelines/$SLUG declares version $SPEC_VERSION in pipeline.yaml but $README_VERSION in README.md. The README frontmatter is what the marketplace listing shows and what consumers receive in the bundle — they must agree."
+              exit 1
+            fi
+
             npx @agentsmarket/cli@${CLI_VERSION} validate "pipelines/$SLUG/pipeline.yaml"
             echo "::endgroup::"
           done
