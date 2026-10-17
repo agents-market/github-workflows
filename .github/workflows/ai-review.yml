@@ -29,7 +29,7 @@ on:
         description: 'Version of each pipeline to install from the marketplace'
         required: false
         type: string
-        default: '1.0.1'
+        default: '2.0.3'
       focus_area:
         description: 'Override focus_area for both pipelines. Leave unset to keep each pipeline own default.'
         required: false
@@ -40,14 +40,13 @@ on:
         type: string
       advisory:
         description: >-
-          '"true" to report findings but not fail the job when a pipeline fails.
-          Default true: the pipelines currently fail ~1 run in 3 because the runtime
-          hardcodes max_tokens to 4096 and MiniMax spends that budget on reasoning,
-          so a blocking check here is pure noise. Pass "false" to make it a required
-          check once agents-market/main honours stage.maxTokens.'
+          '"true" reports findings but does not fail the job when a pipeline
+          fails. Default false, so a broken review is a visible failure rather
+          than a silently green check. Pass "true" only if a flaky model must
+          not be allowed to block your PRs.'
         required: false
         type: string
-        default: 'true'
+        default: 'false'
     secrets:
       MINIMAX_API_KEY:
         required: true
@@ -85,12 +84,12 @@ jobs:
         # ${{ matrix.pipeline.x }} renders as nothing.
         pipeline:
           - slug: code-review-security-audit
-            version: ${{ inputs.pipeline_version || '1.0.1' }}
+            version: ${{ inputs.pipeline_version || '2.0.3' }}
             focus_area: ${{ inputs.focus_area || 'security' }}
             severity: ${{ inputs.severity || 'medium' }}
             label: security audit
           - slug: style-review
-            version: ${{ inputs.pipeline_version || '1.0.1' }}
+            version: ${{ inputs.pipeline_version || '2.0.3' }}
             focus_area: ${{ inputs.focus_area || 'all' }}
             severity: ${{ inputs.severity || 'low' }}
             label: style review
