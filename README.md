@@ -57,7 +57,20 @@ reviewable, not because CI checks them.
 
 ### `workflows/` — reference GitHub Actions workflows
 
-Thin reusable workflows + examples showing how to invoke pipelines via `agents-market/pipeline-action@v0.4.x`.
+`workflows/ai-code-review.yml` is the consumer-side wiring. Copy it to
+`.github/workflows/ai-review.yml` in your repo, set `MINIMAX_API_KEY`, and pin
+`agents-market/github-workflows/.github/workflows/ai-review.yml` to a full
+commit SHA. The review logic lives in that one file, so a fix ships here once
+and every consumer gets it on the next pin bump.
+
+Inputs are optional. `pipeline_version` defaults to `1.0.1`; `focus_area` and
+`severity` are left unset on purpose, so each pipeline keeps its own default
+(`security` for the audit, `all` for style). `advisory` is a string, `"true"`
+by default: findings are reported but a failing pipeline does not block the
+PR. Pass `"false"` to make it a required check.
+
+For wiring a pipeline directly rather than through the review workflow, see
+`agents-market/pipeline-action@v0.4.x`.
 
 ### `examples/` — sample integrations
 

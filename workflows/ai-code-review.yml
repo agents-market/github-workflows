@@ -1,0 +1,41 @@
+# Consumer-side wiring for the AI code review workflow.
+#
+# Copy this file to `.github/workflows/ai-review.yml` in your repo and set the
+# two secrets below. It is deliberately thin: the review logic lives in
+# `.github/workflows/ai-review.yml` here, so a fix ships once and every consumer
+# gets it on the next pin bump.
+#
+# Pin the full commit SHA, never a tag — a tag can move, a SHA cannot.
+# CONTRIBUTING.md, "Pinning", explains why.
+name: AI Code Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<pin-a-full-commit-sha>
+    with:
+      # Version published to the marketplace. Raise it when a pipeline is
+      # republished; the workflows here pin an explicit version on purpose.
+      pipeline_version: '1.0.1'
+
+      # Optional overrides. Leave them out to keep each pipeline's own default —
+      # the security pipeline defaults to focus_area "security", the style
+      # pipeline to "all". Setting one value here applies it to both.
+      # focus_area: all
+      # severity: low
+
+      # "true" (default) reports findings but does not fail the job, so a flaky
+      # model cannot block your PRs. Pass "false" to make it a required check
+      # once you trust it to be stable. It is a string, not a boolean, because
+      # GitHub Actions expressions coerce a missing boolean to false.
+      advisory: 'true'
+    secrets:
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
