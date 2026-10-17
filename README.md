@@ -88,12 +88,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md). External contributions welcome via PR 
 
 ## Status
 
-- **Migration from `agents-market/code-review`**: in progress. See [TASKS row 114](https://github.com/agents-market/main/blob/main/TASKS.md#row-114) for the epic plan.
-- **Canonical pipelines**: 0 migrated yet (G0-G4 in the epic). Pilot = `style-review`, then `code-review-security-audit`.
+- **Migration from `agents-market/code-review`**: complete. See [TASKS row 114](https://github.com/agents-market/main/blob/main/TASKS.md#row-114) for the epic plan.
+- **Canonical pipelines**: both migrated and live on the marketplace — `style-review` and `code-review-security-audit`, under `pipelines/<slug>/`.
 
-## Legacy
+## Removed
 
-The old `code-review-vulnerability-detection` pipeline (`.pipeline.yaml` in repo root) is still here for backwards compat — the existing dogfooding security-review workflow uses it. Migration plan: it will move to `pipelines/code-review-vulnerability-detection/` in a future epic step.
+`code-review-vulnerability-detection` (formerly `.pipeline.yaml` in the repo root) has been withdrawn. It was an earlier draft of the same idea and is strictly dominated by `code-review-security-audit`: one thin LLM stage instead of a cost-tiered scan → deep-review → aggregate chain, no `cwe_id` / `confidence` / false-positive `rejected` reporting, and its GitHub-side stages were never implemented — the pipeline's own header carried the note `github-pr-* skills are STUBS`. It also posted only `comments[0]`, silently dropping every finding after the first.
+
+Nothing consumed it: the dogfooding review workflow has always used `code-review-security-audit`. Use that instead.
 
 ## License
 
