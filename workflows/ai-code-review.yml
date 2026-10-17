@@ -24,7 +24,7 @@ jobs:
     with:
       # Version published to the marketplace. Raise it when a pipeline is
       # republished; the workflows here pin an explicit version on purpose.
-      pipeline_version: '2.0.4'
+      pipeline_version: '2.0.3'
 
       # Optional overrides. Leave them out to keep each pipeline's own default —
       # the security pipeline defaults to focus_area "security", the style
