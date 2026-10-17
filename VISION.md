@@ -128,22 +128,34 @@ marketplace and the current CLI.
 | Examples exist for the website | `examples/` is empty apart from `.gitkeep` | **nothing to embed** |
 | Every pipeline reliable | `style-review` and `code-review-security-audit` at 100%; `test-generator` fails roughly 1 run in 3 on a large diff | `test-generator` is not official yet |
 
-### The blocking item
+### The blocking items
 
-The gap that matters more than all the others combined is the first two rows.
-Today, our own install command tells the user to run a command that cannot work:
+**1. `call` now works in one command.** The gap that mattered most is closed
+and verified end to end: `agents-market/main` #33, published as CLI 0.12.2 with
+runtime 0.5.1, downloads and runs the pipeline from a clean directory. Both
+`style-review@2.0.3` and `style-review@v2.0.3` resolve.
 
-```
-$ agentsmarket pipeline install style-review
-  Run it:     agentsmarket pipeline call style-review --local --mock
-$ agentsmarket pipeline call style-review --local --mock
-✗ Pipeline file not found for slug "style-review".
-```
+**2. The v-prefix works.** `style-review@v2.0.3` is accepted. Releases here are
+tagged `v0.12.2`, so this is the form people type first.
 
-The lockfile already records exactly what is needed to fix this — `slug`,
-`version` and `sha256` — so the resolution is a lookup, not a new concept.
-Until it is fixed, **Law 1 is violated at the very first step**, and no amount
-of README polish or marketing reaches a developer past it.
+**3. The first README command runs.** It points at 2.0.3, which exists.
+
+**4. The promise is checked.** `.github/workflows/smoke.yml` runs both commands
+on every push to `main` and fails loudly if either stops working. It went red
+three times on its way green — once because the published CLI could not do it,
+once because the runner had no identity, once because `code_diff` is required —
+and each failure was a real defect rather than a flaky test.
+
+### Still open
+
+| Item | State |
+|---|---|
+| `examples/` is empty | Nothing for the website to embed yet. This is the largest remaining gap. |
+| `test-generator` fails roughly 1 run in 3 on a large diff | Not official. See section 4 note below. |
+| Consumer file is 18 lines, not 5 | The `on:`/`permissions`/`secrets` header is unavoidable; the rest is what we will trim when a CI system supports `uses:` at workflow top level. |
+| Server silently overwrote four pipelines at `2.0.1` | Fixed in the server repo on 2026-10-14 (#12), not yet deployed. The published `2.0.1` specs now carry `maxTokens`, and the pre-fix copies are unrecoverable. Publishing those four again under a fresh version is the only way to get a clean history. |
+| Four pipelines still sit at `2.0.1` | `style-review` and `code-review-security-audit` are at 2.0.3 with the fixes. The other four were republished in place, so their fixes live under the version they already had. |
+| `maxTokens` needs CLI ≥ 0.12.2 | Published 2.0.3 specs depend on it. Anything older ignores the field silently and falls back to 4096. The smoke test pins the floor. |
 
 ## 5. Rules that follow
 
