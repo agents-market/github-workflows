@@ -63,7 +63,7 @@ reviewable, not because CI checks them.
 commit SHA. The review logic lives in that one file, so a fix ships here once
 and every consumer gets it on the next pin bump.
 
-Inputs are optional. `pipeline_version` defaults to `2.0.3`; `focus_area` and
+Inputs are optional. `pipeline_version` defaults to `2.0.4`; `focus_area` and
 `severity` are left unset on purpose, so each pipeline keeps its own default
 (`security` for the audit, `all` for style). `advisory` is a string, `"false"`
 by default: a failing pipeline fails the job, so a broken review is visible
