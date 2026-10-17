@@ -22,7 +22,7 @@ on:
         default: 'auto'
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: read
 
 jobs:
@@ -47,8 +47,16 @@ jobs:
           if [ -n "${{ inputs.pipeline }}" ]; then
             CHANGED="${{ inputs.pipeline }}"
           else
-            # Compare HEAD to previous commit on main
-            CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'pipelines/*/pipeline.yaml' | xargs -I {} dirname {} | xargs -I {} basename {} | sort -u | tr '\n' ',' | sed 's/,$//')
+            # github.event.before, not HEAD~1: a push of three commits moves
+            # HEAD~1 past the first two, and those pipelines would never
+            # publish. Falls back to HEAD~1 for a manual re-run.
+            BASE="${{ github.event.before }}"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              BASE="HEAD~1"
+            fi
+            CHANGED=$(git diff --name-only "$BASE" HEAD -- 'pipelines/*/pipeline.yaml' \
+              | xargs -r -I {} dirname {} | xargs -r -I {} basename {} \
+              | sort -u | tr '\n' ',' | sed 's/,$//')
             if [ -z "$CHANGED" ]; then
               echo "No pipeline changes detected"
               echo "changed=" >> "$GITHUB_OUTPUT"
@@ -58,17 +66,71 @@ jobs:
           echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
           echo "Pipelines to publish: $CHANGED"
 
+      # `pipeline test` is disabled in the CLI for 0.10.0, so nothing in this
+      # repo has ever run the test.yaml files. This gate is the only thing
+      # standing between a malformed pipeline.yaml and the public catalogue.
+      - name: Validate every changed pipeline
+        if: steps.detect.outputs.changed != ''
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra PIPELINES <<< "${{ steps.detect.outputs.changed }}"
+          for SLUG in "${PIPELINES[@]}"; do
+            echo "::group::Validating $SLUG"
+            [ -f "pipelines/$SLUG/README.md" ] || {
+              echo "::error::pipelines/$SLUG/README.md is missing — publish needs it for the listing"
+              exit 1
+            }
+            npx @agentsmarket/cli validate "pipelines/$SLUG/pipeline.yaml"
+            echo "::endgroup::"
+          done
+
       - name: Publish each pipeline
         if: steps.detect.outputs.changed != ''
         env:
           AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
         run: |
+          set -euo pipefail
           IFS=',' read -ra PIPELINES <<< "${{ steps.detect.outputs.changed }}"
           for SLUG in "${PIPELINES[@]}"; do
             echo "::group::Publishing $SLUG"
             npx @agentsmarket/cli pipeline publish \
               "pipelines/$SLUG/pipeline.yaml" \
               --readme "pipelines/$SLUG/README.md" \
-              --bump-version "${{ inputs.bump || 'minor' }}"
+              --bump-version "${{ inputs.bump || 'minor' }}" | tee "/tmp/$SLUG.log"
             echo "::endgroup::"
           done
+
+      # The CLI bumps the version in the POST body only — it never writes it
+      # back to the file. Without this the repo keeps declaring 2.0.1 while
+      # the catalogue serves 2.1.0, and the next publish bumps from a version
+      # that no longer exists. [skip ci] is load-bearing: the write touches
+      # pipelines/**, which is this workflow's own trigger.
+      - name: Write published versions back
+        if: steps.detect.outputs.changed != ''
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra PIPELINES <<< "${{ steps.detect.outputs.changed }}"
+          for SLUG in "${PIPELINES[@]}"; do
+            NEW=$(grep -oE 'Version: +[0-9]+\.[0-9]+\.[0-9]+' "/tmp/$SLUG.log" | tail -1 | grep -oE '[0-9.]+$' || true)
+            [ -n "$NEW" ] || { echo "  $SLUG: no Version: line, leaving file alone"; continue; }
+            FILE="pipelines/$SLUG/pipeline.yaml"
+            CUR=$(grep -m1 -E '^version:' "$FILE" | grep -oE '[0-9.]+')
+            if [ "$NEW" = "$CUR" ]; then
+              echo "  $SLUG: already $NEW, nothing to write"
+              continue
+            fi
+            sed -i -E "s/^version: .*/version: $NEW/" "$FILE"
+            sed -i -E "s/^version: .*/version: $NEW/" "pipelines/$SLUG/README.md" 2>/dev/null || true
+            git add "$FILE" "pipelines/$SLUG/README.md" 2>/dev/null || git add "$FILE"
+            echo "  $SLUG: $CUR -> $NEW"
+          done
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "chore(pipelines): record published versions [skip ci]"
+          git push -q origin HEAD:${{ github.ref_name }}
