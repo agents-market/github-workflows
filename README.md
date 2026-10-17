@@ -28,11 +28,32 @@ Consumers (any GitHub repo) install pipelines from this repo via the marketplace
 
 ### `pipelines/` — canonical pipelines
 
-Each subdirectory is one pipeline. Currently in flight:
+Each subdirectory is one pipeline, carrying `pipeline.yaml`, a `README.md`
+generated from that spec, and a `test.yaml` describing expected output.
 
-| Pipeline | Status | Used by |
-|----------|--------|---------|
-| _(none yet — G3 in epic plan)_ | — | — |
+| Pipeline | Input | Stages | Marketplace |
+|----------|-------|--------|-------------|
+| [`code-review-security-audit`](pipelines/code-review-security-audit/) | source diff | 3 | 2.0.2 |
+| [`style-review`](pipelines/style-review/) | source diff | 3 | 2.0.2 |
+| [`dependency-scanner`](pipelines/dependency-scanner/) | lockfile | 3 | 2.0.1 |
+| [`api-design-reviewer`](pipelines/api-design-reviewer/) | API spec | 3 | 2.0.1 |
+| [`documentation-generator`](pipelines/documentation-generator/) | source diff | 3 | 2.0.1 |
+| [`test-generator`](pipelines/test-generator/) | source diff | 3 | 2.0.1 |
+
+The first two came from the `agents-market/code-review` migration. The other
+four were promoted out of `agents-market/main/examples/` on 2026-10-17, after
+every example was run end-to-end against a real MiniMax-M3: of 20, ten execute,
+and these four cover four different input domains. The examples that did not
+execute are withdrawn from the catalogue.
+
+**All six share one shape** — three stages, `structured_json` at every hop.
+What differs is the input, not the design. Treat them as one pattern with six
+front-ends until something genuinely multi-stage (a loop, a fan-out, a tool
+call) runs reliably enough to be canonical.
+
+Nothing executes `test.yaml` today: `agentsmarket pipeline test` is disabled in
+the CLI for 0.10.0. The files are written down so the expectations are
+reviewable, not because CI checks them.
 
 ### `workflows/` — reference GitHub Actions workflows
 
@@ -89,7 +110,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md). External contributions welcome via PR 
 ## Status
 
 - **Migration from `agents-market/code-review`**: complete. See [TASKS row 114](https://github.com/agents-market/main/blob/main/TASKS.md#row-114) for the epic plan.
-- **Canonical pipelines**: both migrated and live on the marketplace — `style-review` and `code-review-security-audit`, under `pipelines/<slug>/`.
+- **Canonical pipelines**: six, all live — see [`pipelines/`](#pipelines--canonical-pipelines). Two migrated from `code-review`; four promoted from `examples/` after a real-model audit.
 
 ## Removed
 
