@@ -88,28 +88,30 @@ CI/CD: PR-merge to main → auto-detect changed pipelines → bump version → p
 
 ## Quick start (consumer)
 
-```bash
-# Install a pipeline from this repo to your local project
-agentsmarket pipeline install style-review@v1.0.0
-# → creates .agentsmarket/pipelines/style-review@v1.0.0/{pipeline.yaml,README.md,metadata.json}
+One command. It downloads the pipeline and runs it — no install step, no
+lockfile to understand:
 
-# Use it in your GitHub workflow
+```bash
+npx @agentsmarket/cli pipeline call style-review@2.0.3 --local \
+  --inputs '{"code_diff":"<git diff>"}'
 ```
+
+In your own GitHub workflow, one file and five lines. Every option has a
+working default, so there is nothing to choose:
 
 ```yaml
 # .github/workflows/ai-review.yml
-- name: Install pipeline
-  run: agentsmarket pipeline install style-review@v1.0.0 code-review-security-audit@v1.0.0
-  env:
-    AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
-
-- name: Run style-review
-  uses: agents-market/pipeline-action@v0.4.x
-  with:
-    pipeline_file: .agentsmarket/pipelines/style-review@v1.0.0/pipeline.yaml
+jobs:
+  review:
+    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<full-commit-sha>
+    secrets:
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
-Full guide: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Pin the full commit SHA, never a tag — a tag can move, a SHA cannot.
+
+Full guide: see [`CONTRIBUTING.md`](CONTRIBUTING.md). The target these examples
+are moving towards is in [`VISION.md`](VISION.md).
 
 ## Architecture (3-tier)
 
