@@ -1,6 +1,6 @@
 ---
 name: style-review
-version: 2.0.3
+version: 2.0.4
 description: |
   AI-powered code style review for diffs. Identifies naming inconsistencies,
   missing types, unused exports, magic numbers, and codebase-pattern violations.
