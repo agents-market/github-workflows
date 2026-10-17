@@ -27,6 +27,18 @@ jobs:
       - name: Install CLI
         run: npm install -g @agentsmarket/cli@0.12.2
 
+      # Downloading from the marketplace is an authenticated request, so a
+      # runner needs an identity. Without this the one command fails with
+      # "Not in the marketplace either", which is what the first run of this
+      # workflow actually did.
+      - name: Mint throwaway agent identity
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.config/agentsmarket
+          chmod 700 ~/.config/agentsmarket
+          agentsmarket init
+          chmod 600 ~/.config/agentsmarket/agent.key
+
       - name: One command, no install step, no inputs
         run: agentsmarket pipeline call style-review@2.0.3 --local --mock
 
