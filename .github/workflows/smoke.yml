@@ -39,8 +39,12 @@ jobs:
           agentsmarket init
           chmod 600 ~/.config/agentsmarket/agent.key
 
-      - name: One command, no install step, no inputs
-        run: agentsmarket pipeline call style-review@2.0.3 --local --mock
+      - name: One command, no install step
+        run: |
+          agentsmarket pipeline call style-review@2.0.3 --local --mock \
+            --inputs '{"code_diff":"diff --git a/a.ts b/a.ts\n+const x = 1;"}'
 
       - name: The same with the v-prefixed version
-        run: agentsmarket pipeline call code-review-security-audit@v2.0.3 --local --mock
+        run: |
+          agentsmarket pipeline call code-review-security-audit@v2.0.3 --local --mock \
+            --inputs '{"code_diff":"diff --git a/a.ts b/a.ts\n+const x = 1;"}'
