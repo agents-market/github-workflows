@@ -25,6 +25,11 @@ permissions:
   contents: write
   pull-requests: read
 
+env:
+  # Pinned explicitly: `npx @agentsmarket/cli` without a version pulls
+  # latest, and a release once shipped an unpublished dependency (E404).
+  CLI_VERSION: '0.12.1'
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -82,23 +87,27 @@ jobs:
               echo "::error::pipelines/$SLUG/README.md is missing — publish needs it for the listing"
               exit 1
             }
-            npx @agentsmarket/cli validate "pipelines/$SLUG/pipeline.yaml"
+            npx @agentsmarket/cli@${CLI_VERSION} validate "pipelines/$SLUG/pipeline.yaml"
             echo "::endgroup::"
           done
 
       - name: Publish each pipeline
         if: steps.detect.outputs.changed != ''
         env:
-          AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
+          # The CLI ignores AGENTSMARKET_PRIVATE_KEY: loadConfig() looks for a
+          # config dir first, and in CI there is none, so publishing failed with
+          # "Agent not initialized". Treasury mode reads the key straight from the
+          # environment, which is what a stateless runner needs.
+          AGENTSMARKET_TREASURY_KEY: ${{ secrets.PUBLISH_KEY }}
         run: |
           set -euo pipefail
           IFS=',' read -ra PIPELINES <<< "${{ steps.detect.outputs.changed }}"
           for SLUG in "${PIPELINES[@]}"; do
             echo "::group::Publishing $SLUG"
-            npx @agentsmarket/cli pipeline publish \
+            npx @agentsmarket/cli@${CLI_VERSION} pipeline publish \
               "pipelines/$SLUG/pipeline.yaml" \
               --readme "pipelines/$SLUG/README.md" \
-              --bump-version "${{ inputs.bump || 'minor' }}" | tee "/tmp/$SLUG.log"
+              --bump-version "${{ inputs.bump || 'patch' }}" | tee "/tmp/$SLUG.log"
             echo "::endgroup::"
           done
 

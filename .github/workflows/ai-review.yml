@@ -29,7 +29,7 @@ on:
         description: 'Version of each pipeline to install from the marketplace'
         required: false
         type: string
-        default: '2.0.3'
+        default: '2.0.4'
       focus_area:
         description: 'Override focus_area for both pipelines. Leave unset to keep each pipeline own default.'
         required: false
@@ -71,11 +71,11 @@ jobs:
     name: ${{ matrix.pipeline.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Compared as a string, not coerced: GitHub Actions expressions have no
-    # ternary operator, and `inputs.advisory == false` on a pull_request run
-    # would coerce a missing value to 0 and compare equal, silently blocking
-    # every PR. An unset input is the empty string, which is not 'false'.
-    continue-on-error: ${{ inputs.advisory != 'false' }}
+    # Compared against 'true', not 'false'. On pull_request and workflow_dispatch
+    # the inputs context is empty, so `inputs.advisory` is '' — and `'' != 'false'`
+    # made the dogfood run advisory, i.e. silently green. An unset input must
+    # mean strict; only an explicit 'true' may downgrade a failure to a warning.
+    continue-on-error: ${{ inputs.advisory == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -84,12 +84,12 @@ jobs:
         # ${{ matrix.pipeline.x }} renders as nothing.
         pipeline:
           - slug: code-review-security-audit
-            version: ${{ inputs.pipeline_version || '2.0.3' }}
+            version: ${{ inputs.pipeline_version || '2.0.4' }}
             focus_area: ${{ inputs.focus_area || 'security' }}
             severity: ${{ inputs.severity || 'medium' }}
             label: security audit
           - slug: style-review
-            version: ${{ inputs.pipeline_version || '2.0.3' }}
+            version: ${{ inputs.pipeline_version || '2.0.4' }}
             focus_area: ${{ inputs.focus_area || 'all' }}
             severity: ${{ inputs.severity || 'low' }}
             label: style review
