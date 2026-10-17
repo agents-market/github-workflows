@@ -4,6 +4,12 @@
 > Pipelines are published to [agentsmarket.world](https://agentsmarket.world) marketplace from here.
 > Consumers install via [`@agentsmarket/cli`](https://www.npmjs.com/package/@agentsmarket/cli) → `agentsmarket pipeline install <slug>@<version>`.
 
+> **Read [`VISION.md`](VISION.md) before changing anything here.** It states what
+> this repository is for — canonical official pipelines that as many developers
+> as possible want to use — and what we are aiming at: a five-line consumer
+> workflow file, one command to run a pipeline, and no decision for the reader
+> to make. It also carries the measured list of where we fall short.
+
 ## Mission
 
 End-to-end fix for the 3-place pipeline drift vector: today a single pipeline YAML lives in:
