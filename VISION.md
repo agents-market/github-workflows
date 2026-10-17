@@ -126,7 +126,7 @@ marketplace and the current CLI.
 | First README command runs | README says `style-review@v1.0.0`; the server rejects it — `version must be a valid semver string (X.Y.Z)` | **the leading `v` is not accepted** |
 | Consumer file is minimal | 40 lines, ~26 of them comments | trim to the five-line target |
 | Examples exist for the website | `examples/` is empty apart from `.gitkeep` | **nothing to embed** |
-| Every pipeline reliable | `style-review` and `code-review-security-audit` at 100%; `test-generator` fails roughly 1 run in 3 on a large diff | `test-generator` is not official yet |
+| Every pipeline reliable | `style-review` 100%, `code-review-security-audit` 100%, `test-generator` **17 of 20** across 6k and 15k diffs but **10 of 14** at 50k | fails only on very large diffs — see below |
 
 ### The blocking items
 
@@ -151,11 +151,38 @@ and each failure was a real defect rather than a flaky test.
 | Item | State |
 |---|---|
 | `examples/` is empty | Nothing for the website to embed yet. This is the largest remaining gap. |
-| `test-generator` fails roughly 1 run in 3 on a large diff | Not official. See section 4 note below. |
+| `test-generator` at 50k-char diffs | Degraded, not broken. Measured against the published artifact: 5/6 at 6 000 chars, 6/6 at 15 000, 10/14 at 50 000. The 50 000 figure was measured against the local spec before publication. |
 | Consumer file is 18 lines, not 5 | The `on:`/`permissions`/`secrets` header is unavoidable; the rest is what we will trim when a CI system supports `uses:` at workflow top level. |
 | Server silently overwrote four pipelines at `2.0.1` | Fixed in the server repo on 2026-10-14 (#12), not yet deployed. The published `2.0.1` specs now carry `maxTokens`, and the pre-fix copies are unrecoverable. Publishing those four again under a fresh version is the only way to get a clean history. |
 | Four pipelines still sit at `2.0.1` | `style-review` and `code-review-security-audit` are at 2.0.3 with the fixes. The other four were republished in place, so their fixes live under the version they already had. |
 | `maxTokens` needs CLI ≥ 0.12.2 | Published 2.0.3 specs depend on it. Anything older ignores the field silently and falls back to 4096. The smoke test pins the floor. |
+
+### A note on test-generator
+
+It looked broken and mostly is not. Measured against the artifact consumers
+actually install, `test-generator@2.0.1`:
+
+| diff size | result |
+|---|---|
+| 6 000 chars | 5 of 6 |
+| 15 000 chars | 6 of 6 |
+| 50 000 chars | 10 of 14 |
+
+The earlier "fails one run in three" figure came from the 50 000-char case
+alone, measured against the local spec. That is the size limit of the input,
+not a broken pipeline — and 50 000 is the documented maximum, so the worst case
+is a legitimate use.
+
+The failure itself is worth knowing about, because it is not a tuning problem:
+the model answers with a Markdown document instead of JSON. The prompt asks for
+`markdown_report` containing "Markdown summary with generated test code
+snippets, code fences", and the model produces exactly that as its whole
+answer. Constraining it harder made things worse — 6 of 10, with
+`markdown_report` simply missing from the reply.
+
+So: keep it, measure it at realistic sizes, and do not advertise it above
+15 000 chars. A pipeline that is reliable at its documented limit is official.
+One that is not, is not.
 
 ## 5. Rules that follow
 
