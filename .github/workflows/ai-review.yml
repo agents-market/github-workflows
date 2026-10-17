@@ -19,6 +19,38 @@
 name: AI Review
 
 on:
+  # Reusable: another repo calls this with
+  #   uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<sha>
+  #   secrets: inherit
+  # Pin the full commit SHA, per CONTRIBUTING.md — never a tag.
+  workflow_call:
+    inputs:
+      pipeline_version:
+        description: 'Version of each pipeline to install from the marketplace'
+        required: false
+        type: string
+        default: '1.0.1'
+      focus_area:
+        description: 'Override focus_area for both pipelines. Leave unset to keep each pipeline own default.'
+        required: false
+        type: string
+      severity:
+        description: 'Override severity_threshold for both pipelines. Leave unset to keep each pipeline own default.'
+        required: false
+        type: string
+      advisory:
+        description: >-
+          '"true" to report findings but not fail the job when a pipeline fails.
+          Default true: the pipelines currently fail ~1 run in 3 because the runtime
+          hardcodes max_tokens to 4096 and MiniMax spends that budget on reasoning,
+          so a blocking check here is pure noise. Pass "false" to make it a required
+          check once agents-market/main honours stage.maxTokens.'
+        required: false
+        type: string
+        default: 'true'
+    secrets:
+      MINIMAX_API_KEY:
+        required: true
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -40,6 +72,11 @@ jobs:
     name: ${{ matrix.pipeline.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Compared as a string, not coerced: GitHub Actions expressions have no
+    # ternary operator, and `inputs.advisory == false` on a pull_request run
+    # would coerce a missing value to 0 and compare equal, silently blocking
+    # every PR. An unset input is the empty string, which is not 'false'.
+    continue-on-error: ${{ inputs.advisory != 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -48,14 +85,14 @@ jobs:
         # ${{ matrix.pipeline.x }} renders as nothing.
         pipeline:
           - slug: code-review-security-audit
-            version: '1.0.1'
-            focus_area: security
-            severity: medium
+            version: ${{ inputs.pipeline_version || '1.0.1' }}
+            focus_area: ${{ inputs.focus_area || 'security' }}
+            severity: ${{ inputs.severity || 'medium' }}
             label: security audit
           - slug: style-review
-            version: '1.0.1'
-            focus_area: all
-            severity: low
+            version: ${{ inputs.pipeline_version || '1.0.1' }}
+            focus_area: ${{ inputs.focus_area || 'all' }}
+            severity: ${{ inputs.severity || 'low' }}
             label: style review
     steps:
       - uses: actions/checkout@v7
