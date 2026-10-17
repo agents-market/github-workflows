@@ -1,0 +1,185 @@
+# name: documentation-generator
+# version: 2.0.1
+# description: AI documentation generator for code diffs — analyzes code structure (modules, functions, classes, endpoints), then generates README + module docs + API reference. Structured findings with severity + unit + generated doc snippet. Vertical wedge expansion path — documentation generation as paid AI agent service.
+# price_usdc: 1000
+# tags: ["documentation", "code-review", "vertical-wedge"]
+# public_preview: AI documentation generator. JSDoc + README + examples from bare code. Identifies undocumented exports, missing @param/@returns, absent module-level docs. $0.001/call.
+name: documentation-generator
+version: 2.0.1
+description: AI documentation generator for code diffs — analyzes code structure (modules, functions, classes, endpoints), then generates README + module docs + API reference. Structured findings with severity + unit + generated doc snippet. Vertical wedge expansion path — documentation generation as paid AI agent service.
+author_id: '0x44986097Fd624d3B17De6f82fdB829Db189990f7'
+license: MIT
+
+cost:
+  max_per_run_usdc: 1.00
+  on_exceed: fail
+inputs:
+  code_diff:
+    type: string
+    required: true
+    description: "Git diff or unified patch text (1..50000 chars). Standard hunk header format `@@ -a,b +c,d @@`."
+    min_length: 1
+    max_length: 50000
+  language:
+    type: string
+    required: false
+    default: typescript
+    enum: [typescript, javascript, python, rust, go]
+    description: "Primary language in the diff (helps generator pick doc conventions: JSDoc vs docstrings vs rustdoc; default: typescript)."
+  doc_type:
+    type: string
+    required: false
+    default: all
+    enum: [readme, api, architecture, all]
+    description: "What documentation to generate (default: all — README + API reference + architecture notes)."
+
+outputs:
+  findings:
+    format: structured_json
+    description: "Array of documentation findings: {severity, line, unit, category, description, generated_doc, confidence}."
+    fields:
+      findings: string
+  summary:
+    format: structured_json
+    description: "Aggregate counts + doc score (0-10): {total_findings, critical_count, high_count, medium_count, low_count, doc_score}."
+    fields:
+      summary: string
+  recommendations:
+    format: structured_json
+    description: "Array of ≤5 prioritized documentation strings (≤200 chars each, ordered by impact)."
+    fields:
+      recommendations: string
+  markdown_report:
+    format: structured_json
+    description: "Generated documentation (README snippet + JSDoc examples + API reference, ≤100 lines)."
+    fields:
+      markdown_report: string
+defaults:
+  model: MiniMax-M3
+
+stages:
+  - id: profile_code_structure
+    provider: minimax
+    model: MiniMax-M2.7
+    system: "You are a code structure profiler. Quickly extract the documentable units from a code diff: modules, exported functions, classes, types/interfaces, and HTTP endpoints. Note which units already have documentation (JSDoc, docstrings, comments) and which do not. Be precise — false positives waste generation time."
+    prompt: |
+      Profile the following $input.language diff for documentable code structure.
+
+      For each unit emit a JSON object with:
+        - `unit` (string — function/class/module/endpoint identifier)
+        - `kind` (module | function | class | type | endpoint | other)
+        - `line_range` (string — e.g., "42-67")
+        - `exported` (boolean — true if part of the public API surface)
+        - `documented` (boolean — true if a doc comment already exists)
+
+      Return JSON:
+      {
+        "units": [{"unit": "...", "kind": "...", "line_range": "...", "exported": true, "documented": false}, ...],
+        "stats": { "units_count": n, "exported_count": n, "undocumented_count": n, "language": "$input.language" }
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+
+      Diff:
+      ```
+      $input.code_diff
+      ```
+    output_format: structured_json
+    fields: [units, stats]
+  - id: generate_documentation
+    provider: minimax
+    model: MiniMax-M3
+    depends_on: [profile_code_structure]
+    system: "You are a senior technical writer who generates documentation from code. For each undocumented unit, write a concise doc comment in the language's convention (JSDoc for TypeScript/JavaScript, docstrings for Python, rustdoc for Rust, godoc for Go): one-line summary, @param/@returns (or equivalent), and a minimal usage example for exported functions. Also draft README and API-reference sections. Provide: severity (critical/high/medium/low — critical = undocumented exported API, high = undocumented exported type, medium = undocumented internal with complex logic, low = missing usage example), short description (≤200 chars), generated doc snippet (≤500 chars — the actual comment block to insert), and confidence (0.0-1.0)."
+    prompt: |
+      Generate documentation for the following code units.
+
+      Units (from profile):
+      $stages.profile_code_structure.output
+
+      Doc type: $input.doc_type — prioritize accordingly (readme = module overview + quickstart, api = per-export reference, architecture = module relationships + data flow, all = everything).
+
+      For EACH undocumented unit, emit a JSON object with:
+        - `unit` (string — from input)
+        - `line` (integer — first line of the unit)
+        - `severity` (critical | high | medium | low)
+        - `category` (string — readme | api | jsdoc | example | architecture)
+        - `description` (string ≤200 chars — what documentation is missing)
+        - `generated_doc` (string ≤500 chars — the actual doc comment or markdown snippet to insert)
+        - `confidence` (float 0.0-1.0)
+
+      Return JSON:
+      {
+        "findings": [...],
+        "summary": {
+          "total_findings": int,
+          "units_analyzed": int
+        }
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [findings, summary]
+  - id: aggregate_to_markdown
+    provider: minimax
+    model: MiniMax-M2.7
+    depends_on: [generate_documentation]
+    system: "You assemble generated documentation into a final structured report. Use a 0-10 doc_score scale where 10 = fully documented public API (every export has doc comments + README + examples) and 0 = no documentation at all. Order recommendations by impact (undocumented public API first)."
+    prompt: |
+      Compute the final documentation generation report.
+
+      Inputs to merge:
+        - Profile: $stages.profile_code_structure.output
+        - Generate: $stages.generate_documentation.output
+
+      Output a JSON object with EXACTLY these four fields:
+        - `summary`: {
+            "total_findings": int,
+            "critical_count": int,
+            "high_count": int,
+            "medium_count": int,
+            "low_count": int,
+            "doc_score": float (0-10)
+          }
+        - `recommendations`: array of ≤5 prioritized documentation strings (≤200 chars each, ordered by impact)
+        - `markdown_report`: Generated documentation suitable for direct use (≤100 lines, structure: README snippet, API reference with JSDoc examples, remaining doc tasks)
+        - `findings`: array of {unit, line, severity, category, description, generated_doc, confidence} — same shape as stage 2, included for convenience
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [summary, recommendations, markdown_report, findings]
+    output_schema:
+      type: object
+      required: [summary, recommendations, markdown_report, findings]
+      additionalProperties: false
+      properties:
+        summary:
+          type: object
+          required: [total_findings, critical_count, high_count, medium_count, low_count, doc_score]
+          properties:
+            total_findings: { type: integer }
+            critical_count: { type: integer }
+            high_count: { type: integer }
+            medium_count: { type: integer }
+            low_count: { type: integer }
+            doc_score: { type: number }
+        recommendations:
+          type: array
+          maxItems: 5
+          items: { type: string, maxLength: 200 }
+        markdown_report:
+          type: string
+          maxLength: 16000
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              unit: { type: string }
+              line: { type: integer }
+              severity: { type: string, enum: [critical, high, medium, low] }
+              category: { type: string }
+              description: { type: string }
+              generated_doc: { type: string }
+              confidence: { type: number }
+    output_retry: single

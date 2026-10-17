@@ -1,0 +1,22 @@
+name: api-design-reviewer mock test
+description: Valid API spec produces deterministic mock design findings with design_score in mock mode.
+pipeline: ./pipeline.yaml
+mock: true
+inputs:
+  api_spec: "POST /user\nGET /users/{id}\nopenapi: 3.0.0"
+  api_style: auto
+  strictness: strict
+assertions:
+  - type: exists
+    path: review_design.findings
+  - type: gte
+    path: aggregate_to_review.summary.design_score
+    value: 1
+  - type: gte
+    path: aggregate_to_review.summary.high_count
+    value: 1
+  - type: exists
+    path: aggregate_to_review.recommendations
+  - type: regex
+    path: aggregate_to_review.markdown_report
+    pattern: Mock report

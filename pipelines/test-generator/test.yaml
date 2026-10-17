@@ -1,0 +1,23 @@
+name: test-generator mock test
+description: Valid diff produces deterministic mock test cases with test_score in mock mode.
+pipeline: ./pipeline.yaml
+mock: true
+inputs:
+  code_diff: "diff --git a/discount.ts b/discount.ts\n+export function calculateDiscount(price: number) {\n+  if (price < 0) throw new Error('negative');\n+  return price * 0.9;\n+}"
+  language: typescript
+  test_framework: auto
+  coverage_target: all
+assertions:
+  - type: exists
+    path: generate_tests.test_cases
+  - type: gte
+    path: aggregate_to_test_file.summary.test_score
+    value: 1
+  - type: gte
+    path: aggregate_to_test_file.summary.high_count
+    value: 1
+  - type: exists
+    path: aggregate_to_test_file.recommendations
+  - type: regex
+    path: aggregate_to_test_file.markdown_report
+    pattern: Mock report

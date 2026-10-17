@@ -1,0 +1,190 @@
+# name: dependency-scanner
+# version: 2.0.1
+# description: AI dependency vulnerability scanner — parses lockfile, identifies known CVEs per package, emits structured findings (severity + CVE + fix version + remediation). Vertical wedge expansion path — dependency scanning as paid AI agent service.
+# price_usdc: 1000
+# tags: ["dependency-scan", "code-review", "vertical-wedge"]
+# public_preview: AI dependency vulnerability scan. Structured findings (severity + CVE + fix version), aggregate risk score 0-10, prioritized remediation. $0.001/call.
+name: dependency-scanner
+version: 2.0.1
+description: AI dependency vulnerability scanner — parses lockfile, identifies known CVEs per package, emits structured findings (severity + CVE + fix version + remediation). Vertical wedge expansion path — dependency scanning as paid AI agent service.
+author_id: '0x44986097Fd624d3B17De6f82fdB829Db189990f7'
+license: MIT
+cost:
+  max_per_run_usdc: 1.00
+  on_exceed: fail
+price_usdc: 1000
+
+inputs:
+  lockfile_content:
+    type: string
+    required: true
+    description: "Contents of lockfile (package.json / requirements.txt / Cargo.toml). 1..50000 chars. Standard format expected."
+    min_length: 1
+    max_length: 50000
+  ecosystem:
+    type: string
+    required: false
+    default: npm
+    enum: [npm, python, rust]
+    description: "Package ecosystem (npm = package-lock.json / package.json, python = requirements.txt / Pipfile.lock, rust = Cargo.toml / Cargo.lock)."
+  severity_threshold:
+    type: string
+    required: false
+    default: medium
+    enum: [low, medium, high, critical]
+    description: "Minimum severity to include in findings array (filters out noise; default: medium)."
+
+outputs:
+  packages:
+    format: structured_json
+    description: "Array of scanned packages: {name, version, is_vulnerable, cves[], fix_version}."
+    fields:
+      packages: string
+  summary:
+    format: structured_json
+    description: "Aggregate counts + overall risk score (0-10): {total_packages, vulnerable_count, critical_count, high_count, medium_count, low_count, overall_risk_score}."
+    fields:
+      summary: string
+  recommendations:
+    format: structured_json
+    description: "Array of ≤5 prioritized remediation strings (≤200 chars each, ordered by impact: critical → high → medium → low)."
+    fields:
+      recommendations: string
+  markdown_report:
+    format: structured_json
+    description: "Markdown summary suitable for PR comment (≤50 lines)."
+    fields:
+      markdown_report: string
+defaults:
+  model: MiniMax-M3
+
+stages:
+  - id: parse_lockfile
+    provider: minimax
+    model: MiniMax-M2.7
+    system: "You are a dependency manifest parser. Extract the list of packages (name + version) from lockfile content. Be precise — false positives waste review time."
+    prompt: |
+      Parse the following $input.ecosystem lockfile and extract every package with its exact version.
+
+      For each package emit a JSON object with:
+        - `name` (string, exact package name)
+        - `version` (string, exact pinned version)
+
+      Return JSON:
+      {
+        "packages": [{"name": "...", "version": "..."}, ...],
+        "stats": { "total_packages": n, "ecosystem": "$input.ecosystem" }
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+
+      Lockfile:
+      ```
+      $input.lockfile_content
+      ```
+    output_format: structured_json
+    fields: [packages, stats]
+  - id: analyze_vulns
+    provider: minimax
+    model: MiniMax-M3
+    depends_on: [parse_lockfile]
+    system: "You are a senior application security analyst specializing in supply-chain vulnerabilities. For each package, identify known CVEs (Common Vulnerabilities and Exposures) that affect the pinned version. Reference CVEs from public databases: NVD (nvd.nist.gov), GitHub Security Advisories (github.com/advisories), Snyk DB, OSV (osv.dev). For each CVE, provide: severity (critical/high/medium/low), short description (≤200 chars), fixed version (or null if no fix), and confidence (0.0-1.0)."
+    prompt: |
+      Analyze the following packages for known vulnerabilities.
+
+      Packages (from lockfile parse):
+      $stages.parse_lockfile.output
+
+      Severity floor: $input.severity_threshold — drop findings below this.
+
+      For EACH vulnerable package, emit a JSON object:
+        - `name` (string)
+        - `version` (string, pinned)
+        - `is_vulnerable` (bool)
+        - `cves` (array of {id, severity, description, fix_version, confidence})
+        - `fix_version` (string or null — latest fixed version, or null if no fix available)
+
+      Return JSON:
+      {
+        "packages": [...],
+        "summary": {
+          "total_packages": int,
+          "vulnerable_count": int
+        }
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [packages, summary]
+  - id: aggregate_report
+    provider: minimax
+    model: MiniMax-M3
+    depends_on: [analyze_vulns]
+    system: "You compute supply-chain risk metrics and prioritize fixes. Use a 0-10 risk scale where 10 = RCE in production via direct dependency and 0 = no known vulnerabilities. Order recommendations by impact (critical first)."
+    prompt: |
+      Compute the final dependency security report.
+
+      Inputs to merge:
+        - Parse:   $stages.parse_lockfile.output
+        - Analyze: $stages.analyze_vulns.output
+
+      Output a JSON object with EXACTLY these four fields:
+        - `summary`: {
+            "total_packages": int,
+            "vulnerable_count": int,
+            "critical_count": int,
+            "high_count": int,
+            "medium_count": int,
+            "low_count": int,
+            "overall_risk_score": float (0-10)
+          }
+        - `recommendations`: array of ≤5 prioritized remediation strings (≤200 chars each, ordered by impact: critical → high → medium → low)
+        - `markdown_report`: Markdown summary suitable for a PR comment (≤50 lines, structure: Summary, Critical/High/Medium sections, Top 5 fixes with exact versions)
+        - `packages`: array of {name, version, is_vulnerable, cves[], fix_version} — same shape as stage 2, included for convenience
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [summary, recommendations, markdown_report, packages]
+    output_schema:
+      type: object
+      required: [summary, recommendations, markdown_report, packages]
+      additionalProperties: false
+      properties:
+        summary:
+          type: object
+          required: [total_packages, vulnerable_count, critical_count, high_count, medium_count, low_count, overall_risk_score]
+          properties:
+            total_packages: { type: integer }
+            vulnerable_count: { type: integer }
+            critical_count: { type: integer }
+            high_count: { type: integer }
+            medium_count: { type: integer }
+            low_count: { type: integer }
+            overall_risk_score: { type: number }
+        recommendations:
+          type: array
+          maxItems: 5
+          items: { type: string, maxLength: 200 }
+        markdown_report:
+          type: string
+          maxLength: 8000
+        packages:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              version: { type: string }
+              is_vulnerable: { type: boolean }
+              cves:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    severity: { type: string, enum: [critical, high, medium, low] }
+                    description: { type: string }
+                    fix_version: { type: string }
+                    confidence: { type: number }
+              fix_version: { type: string }
+    output_retry: single

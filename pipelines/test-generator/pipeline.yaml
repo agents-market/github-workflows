@@ -1,0 +1,201 @@
+# name: test-generator
+# version: 2.0.1
+# description: AI unit test generator for code diffs — analyzes function signatures, branches, and edge cases, then generates test cases in the project's style. Structured per-test-case findings with severity + snippet, aggregate test score 0-10, prioritized coverage recommendations, ready-to-commit test file. Vertical wedge expansion path — test generation as paid AI agent service.
+# price_usdc: 1000
+# tags: ["tests", "code-review", "vertical-wedge"]
+# public_preview: AI test generation. Vitest/pytest edge-case suites from bare functions. Detects untested branches, missing mocks for external calls, unbounded error paths. $0.001/call.
+name: test-generator
+version: 2.0.1
+description: AI unit test generator for code diffs — analyzes function signatures, branches, and edge cases, then generates test cases in the project's style. Structured per-test-case findings with severity + snippet, aggregate test score 0-10, prioritized coverage recommendations, ready-to-commit test file. Vertical wedge expansion path — test generation as paid AI agent service.
+author_id: '0x44986097Fd624d3B17De6f82fdB829Db189990f7'
+license: MIT
+
+cost:
+  max_per_run_usdc: 1.00
+  on_exceed: fail
+inputs:
+  code_diff:
+    type: string
+    required: true
+    description: "Git diff or unified patch text (1..50000 chars). Standard hunk header format `@@ -a,b +c,d @@`."
+    min_length: 1
+    max_length: 50000
+  language:
+    type: string
+    required: false
+    default: typescript
+    enum: [typescript, javascript, python, rust, go]
+    description: "Primary language in the diff (drives framework detection and test syntax; default: typescript)."
+  test_framework:
+    type: string
+    required: false
+    default: auto
+    enum: [vitest, jest, pytest, auto]
+    description: "Test framework to generate for (auto = detect from imports: vitest/jest for TS/JS, pytest for Python; default: auto)."
+  coverage_target:
+    type: string
+    required: false
+    default: all
+    enum: [branches, lines, all]
+    description: "What the generator should prioritize covering (default: all)."
+
+outputs:
+  findings:
+    format: structured_json
+    description: "Array of per-test-case findings: {severity, line, test_case, description, test_snippet, confidence}."
+    fields:
+      findings: string
+  summary:
+    format: structured_json
+    description: "Aggregate counts + test score (0-10): {total_findings, critical_count, high_count, medium_count, low_count, test_score}."
+    fields:
+      summary: string
+  recommendations:
+    format: structured_json
+    description: "Array of ≤5 prioritized coverage strings (≤200 chars each, ordered by impact)."
+    fields:
+      recommendations: string
+  markdown_report:
+    format: structured_json
+    description: "Markdown summary with generated test code snippets (≤100 lines)."
+    fields:
+      markdown_report: string
+  generated_test_code:
+    format: structured_json
+    description: "String with the actual generated test file content, ready to commit."
+    fields:
+      generated_test_code: string
+defaults:
+  model: MiniMax-M3
+
+stages:
+  - id: profile_code_behavior
+    provider: minimax
+    model: MiniMax-M2.7
+    system: "You are a code behavior profiler. Quickly extract function signatures, branches, and edge cases from a code diff. Be precise — false positives waste generation time."
+    prompt: |
+      Profile the following $input.language diff for testable behavior.
+
+      For each function emit a JSON object with:
+        - `function` (string — function name or block identifier)
+        - `signature` (string — full signature, e.g., "calculateDiscount(price: number, userType: string): number")
+        - `line_range` (string — e.g., "42-67")
+        - `branches` (array of strings — e.g., ["userType === 'vip'", "price < 0", "default return"])
+        - `edge_cases` (array of strings — e.g., ["negative price", "unknown userType", "price = 0", "NaN input"])
+
+      Return JSON:
+      {
+        "functions": [{"function": "...", "signature": "...", "line_range": "...", "branches": [...], "edge_cases": [...]}, ...],
+        "stats": { "functions_count": n, "language": "$input.language" }
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+
+      Diff:
+      ```
+      $input.code_diff
+      ```
+    output_format: structured_json
+    fields: [functions, stats]
+  - id: generate_tests
+    provider: minimax
+    model: MiniMax-M3
+    depends_on: [profile_code_behavior]
+    system: "You are a senior test engineer. For each function profile, generate test cases in the project's style: Vitest/Jest (describe/it/expect with mocks via vi.fn) for TypeScript/JavaScript, pytest (functions + fixtures + monkeypatch/parametrize) for Python. Detect the framework from imports when test_framework is auto. Cover happy path, every branch, and every edge case. Each case gets: severity (critical = untested error path that can crash prod, high = untested branch, medium = untested edge, low = nice-to-have), short description (≤200 chars), runnable test snippet (≤30 lines), and confidence (0.0-1.0)."
+    prompt: |
+      Generate test cases for the following function profiles.
+
+      Profiles (from profile):
+      $stages.profile_code_behavior.output
+
+      Test framework: $input.test_framework — when `auto`, detect from imports (vitest/jest for TypeScript/JavaScript, pytest for Python).
+      Coverage target: $input.coverage_target — prioritize accordingly (branches = every branch needs a case, lines = every line needs a case, all = both).
+
+      For EACH test case, emit a JSON object with:
+        - `function` (string — from input)
+        - `line` (integer — first line of the tested code)
+        - `severity` (critical | high | medium | low — how bad it is that this case is untested)
+        - `test_case` (string — short name, e.g., "throws on negative price")
+        - `description` (string ≤200 chars)
+        - `test_snippet` (string — runnable test code, ≤30 lines, in the target framework style with mocks for external calls)
+        - `confidence` (float 0.0-1.0)
+
+      Return JSON:
+      {
+        "test_cases": [...],
+        "summary": {
+          "total_cases": int,
+          "functions_covered": int
+        }
+      }
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [test_cases, summary]
+  - id: aggregate_to_test_file
+    provider: minimax
+    model: MiniMax-M2.7
+    depends_on: [generate_tests]
+    system: "You assemble generated test cases into a final deliverable: a ready-to-commit test file plus coverage metrics. Use a 0-10 test_score scale where 10 = every branch and edge case covered with runnable tests and 0 = no meaningful coverage generated. Order recommendations by impact (untested crash paths first). Generated tests are VERIFIED via the M9 testing framework before delivery — tests must pass before delivery."
+    prompt: |
+      Compute the final test generation report.
+
+      Inputs to merge:
+        - Profile: $stages.profile_code_behavior.output
+        - Generate: $stages.generate_tests.output
+
+      Output a JSON object with EXACTLY these five fields:
+        - `summary`: {
+            "total_findings": int,
+            "critical_count": int,
+            "high_count": int,
+            "medium_count": int,
+            "low_count": int,
+            "test_score": float (0-10)
+          }
+        - `recommendations`: array of ≤5 prioritized coverage strings (≤200 chars each, ordered by impact — untested crash paths first)
+        - `markdown_report`: Markdown summary with generated test code snippets (≤100 lines, structure: Summary, Critical/High/Medium sections, Generated test file with code fences, Top 5 coverage gaps)
+        - `findings`: array of {function, line, severity, test_case, description, test_snippet, confidence} — same shape as stage 2, included for convenience
+        - `generated_test_code`: string with the actual generated test file content (imports + describe/it or pytest functions + mocks for external calls, ready to commit — tests must pass before delivery)
+
+      Reply with valid JSON only. No prose, no markdown fences.
+    output_format: structured_json
+    fields: [summary, recommendations, markdown_report, findings, generated_test_code]
+    output_schema:
+      type: object
+      required: [summary, recommendations, markdown_report, findings, generated_test_code]
+      additionalProperties: false
+      properties:
+        summary:
+          type: object
+          required: [total_findings, critical_count, high_count, medium_count, low_count, test_score]
+          properties:
+            total_findings: { type: integer }
+            critical_count: { type: integer }
+            high_count: { type: integer }
+            medium_count: { type: integer }
+            low_count: { type: integer }
+            test_score: { type: number }
+        recommendations:
+          type: array
+          maxItems: 5
+          items: { type: string, maxLength: 200 }
+        markdown_report:
+          type: string
+          maxLength: 16000
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              function: { type: string }
+              line: { type: integer }
+              severity: { type: string, enum: [critical, high, medium, low] }
+              test_case: { type: string }
+              description: { type: string }
+              test_snippet: { type: string }
+              confidence: { type: number }
+        generated_test_code:
+          type: string
+          maxLength: 20000
+    output_retry: single
