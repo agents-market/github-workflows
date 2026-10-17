@@ -1,0 +1,19 @@
+name: dependency-scanner mock test
+description: Valid lockfile produces deterministic mock package findings in mock mode.
+pipeline: ./pipeline.yaml
+mock: true
+inputs:
+  lockfile_content: '{"dependencies": {"lodash": "4.17.20", "express": "4.18.0"}}'
+  ecosystem: npm
+  severity_threshold: medium
+assertions:
+  - type: exists
+    path: parse_lockfile.packages
+  - type: gte
+    path: aggregate_report.summary.vulnerable_count
+    value: 1
+  - type: exists
+    path: aggregate_report.recommendations
+  - type: regex
+    path: aggregate_report.markdown_report
+    pattern: Mock report

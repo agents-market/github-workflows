@@ -1,0 +1,22 @@
+name: documentation-generator mock test
+description: Valid diff produces deterministic mock documentation findings with doc_score in mock mode.
+pipeline: ./pipeline.yaml
+mock: true
+inputs:
+  code_diff: "diff --git a/users.ts b/users.ts\n+export function createUser(name: string) {\n+  return { name };\n+}"
+  language: typescript
+  doc_type: all
+assertions:
+  - type: exists
+    path: generate_documentation.findings
+  - type: gte
+    path: aggregate_to_markdown.summary.doc_score
+    value: 1
+  - type: gte
+    path: aggregate_to_markdown.summary.high_count
+    value: 1
+  - type: exists
+    path: aggregate_to_markdown.recommendations
+  - type: regex
+    path: aggregate_to_markdown.markdown_report
+    pattern: Mock report
