@@ -41,10 +41,10 @@ jobs:
 
       - name: One command, no install step
         run: |
-          agentsmarket pipeline call style-review@2.0.3 --local --mock \
+          agentsmarket pipeline call style-review@2.0.4 --local --mock \
             --inputs '{"code_diff":"diff --git a/a.ts b/a.ts\n+const x = 1;"}'
 
       - name: The same with the v-prefixed version
         run: |
-          agentsmarket pipeline call code-review-security-audit@v2.0.3 --local --mock \
+          agentsmarket pipeline call code-review-security-audit@v2.0.4 --local --mock \
             --inputs '{"code_diff":"diff --git a/a.ts b/a.ts\n+const x = 1;"}'

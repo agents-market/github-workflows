@@ -86,7 +86,7 @@ consumer file explains itself by being obvious.
 One command. It downloads the pipeline and runs it:
 
 ```
-npx @agentsmarket/cli pipeline call style-review@2.0.3 --local
+npx @agentsmarket/cli pipeline call style-review@2.0.4 --local
 ```
 
 No `install` first. No lockfile to understand. No `--file`. No directory to
@@ -133,12 +133,12 @@ marketplace and the current CLI.
 **1. `call` now works in one command.** The gap that mattered most is closed
 and verified end to end: `agents-market/main` #33, published as CLI 0.12.2 with
 runtime 0.5.1, downloads and runs the pipeline from a clean directory. Both
-`style-review@2.0.3` and `style-review@v2.0.3` resolve.
+`style-review@2.0.4` and `style-review@v2.0.4` resolve.
 
-**2. The v-prefix works.** `style-review@v2.0.3` is accepted. Releases here are
+**2. The v-prefix works.** `style-review@v2.0.4` is accepted. Releases here are
 tagged `v0.12.2`, so this is the form people type first.
 
-**3. The first README command runs.** It points at 2.0.3, which exists.
+**3. The first README command runs.** It points at 2.0.4, which exists.
 
 **4. The promise is checked.** `.github/workflows/smoke.yml` runs both commands
 on every push to `main` and fails loudly if either stops working. It went red
