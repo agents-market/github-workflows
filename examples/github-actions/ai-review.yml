@@ -1,0 +1,21 @@
+# Copy this file to .github/workflows/ai-review.yml in your repository and set
+# one secret: MINIMAX_API_KEY.
+#
+# Pin a full commit SHA, never a tag — a tag can move under you, a SHA cannot.
+# To find the current one:
+#   gh api repos/agents-market/github-workflows/commits/main --jq .sha
+name: AI Code Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<full-commit-sha>
+    secrets:
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
