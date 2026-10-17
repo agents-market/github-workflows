@@ -80,13 +80,22 @@ For wiring a pipeline directly rather than through the review workflow, see
 
 ### `examples/` — sample integrations
 
-End-to-end examples per language stack (TypeScript, Python, Rust, Solidity).
+Start here if you want to see something working before you understand anything
+else. [`examples/README.md`](examples/README.md) has one command that runs a
+pipeline and one workflow file that reviews every PR — both copy-pasteable with
+no editing. [`examples/github-actions/ai-review.yml`](examples/github-actions/ai-review.yml)
+is the workflow file on its own.
 
 ### `.github/workflows/publish.yml`
 
 CI/CD: PR-merge to main → auto-detect changed pipelines → bump version → publish to marketplace.
 
 ## Quick start (consumer)
+
+> **Just want to try one? → [`examples/README.md`](examples/README.md)** — one
+> command that runs a pipeline, one workflow file that reviews every PR, both
+> copy-pasteable without editing.
+
 
 One command. It downloads the pipeline and runs it — no install step, no
 lockfile to understand:
