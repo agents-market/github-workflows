@@ -76,7 +76,7 @@ by default: a failing pipeline fails the job, so a broken review is visible
 rather than silently green. Pass `"true"` to downgrade that to a warning.
 
 For wiring a pipeline directly rather than through the review workflow, see
-`agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4`.
+`agents-market/pipeline-action@0ed368079a4ebf4e5272bc1694cffedc26d59cc6 # v0.4.4`.
 
 ### `examples/` — sample integrations
 
