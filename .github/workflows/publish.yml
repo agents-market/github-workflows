@@ -64,7 +64,12 @@ jobs:
             # README-only fix has to republish. #23 corrected two README
             # versions and this detection missed it — the run succeeded having
             # published nothing.
-            CHANGED=$(git diff --name-only "$BASE" HEAD \
+            # --diff-filter=d: a deleted path is still a path. Removing a file from a
+            # pipeline — or deleting the fixture README that briefly sat under
+            # one — listed the old path, the detector read its directory as a
+            # pipeline named after that directory, and the job failed at
+            # validation for a pipeline that does not exist.
+            CHANGED=$(git diff --name-only --diff-filter=d "$BASE" HEAD \
                 -- 'pipelines/*/pipeline.yaml' 'pipelines/*/README.md' \
               | xargs -r -I {} dirname {} | xargs -r -I {} basename {} \
               | sort -u | tr '\n' ',' | sed 's/,$//')
