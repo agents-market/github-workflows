@@ -29,25 +29,30 @@ jobs:
         with:
           node-version: 22
 
-      # We publish the action, and a stale pin means the dogfooding run silently
-      # exercises an older runtime than the one the consumer gets. Newest tag by
-      # commit date, NOT by name: in that repo v1.0.0 predates v0.4.4, and tag
-      # `v1` shipped an unparseable action.yml and stayed broken for three weeks.
-      - name: pipeline-action pin is not behind the newest release
+      # The action is not pinned, so nothing here can go stale. What can break is the
+      # ref itself: tag `v1` in that repo shipped an action.yml YAML that the
+      # runner cannot parse, and nothing noticed for three weeks. This asserts the
+      # ref resolves to something loadable — manifest parses, entrypoint exists.
+      - name: The action ref we use is a loadable action
         run: |
           set -euo pipefail
-          PIN=$(grep -oE "pipeline-action@[0-9a-f]{40}" .github/workflows/ai-review.yml \
+          REPO=agents-market/pipeline-action
+          REF=$(grep -oE "pipeline-action@[A-Za-z0-9._/-]+" .github/workflows/ai-review.yml \
                 | head -1 | cut -d@ -f2)
-          [ -n "$PIN" ] || { echo "::error::no pipeline-action SHA pin in ai-review.yml"; exit 1; }
-          NEW=$(.github/scripts/newest-action-release.sh)
-          # ahead is fine — pinning main HEAD on purpose is a legitimate choice.
-          # only "behind" means we are dogfooding something the consumer no longer gets.
-          STATUS=$(gh api "repos/agents-market/pipeline-action/compare/$NEW...$PIN" --jq .status)
-          echo "pinned $PIN; newest $NEW; compare=$STATUS"
-          if [ "$STATUS" = "behind" ]; then
-            echo "::error::pipeline-action is pinned behind $NEW. bump-action-pin.yml opens a PR for this daily; if it has not, bump by hand to $NEW"
-            exit 1
-          fi
+          [ -n "$REF" ] || { echo "::error::no pipeline-action ref in ai-review.yml"; exit 1; }
+          D=$(mktemp -d)
+          gh api "repos/$REPO/contents/action.yml?ref=$REF" --jq .content | base64 -d > "$D/action.yml"
+          gh api "repos/$REPO/contents/dist/index.js?ref=$REF" --jq .size > "$D/dist-size"
+          python3 - "$D" "$REF" <<'PY'
+          import pathlib, sys, yaml
+          d = pathlib.Path(sys.argv[1])
+          spec = yaml.safe_load((d / "action.yml").read_text())
+          runs = spec.get("runs") or {}
+          assert runs.get("main"), f"action.yml has no runs.main: {runs}"
+          size = (d / "dist-size").read_text().strip()
+          assert size.isdigit(), f"dist/index.js is not a readable file at {sys.argv[2]}"
+          print(f"{sys.argv[2]}: {len(spec.get('inputs') or {})} inputs, runs {runs['main']}, dist {size} bytes")
+          PY
         env:
           GH_TOKEN: ${{ github.token }}
 

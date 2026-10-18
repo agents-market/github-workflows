@@ -179,9 +179,15 @@ jobs:
         #   - a top-level `env:` with nothing under it parses as `env: null`,
         #     which is not a mapping and is rejected outright. Deleting a key
         #     from `env:` leaves the key behind.
-        # SHA inlined for the same reason — a tag can move, and here the failure
-        # is silent.
-        uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf  # v0.4.4 # v0.4.3
+        # A moving ref, on purpose, and not for laziness. We publish this action,
+        # so a SHA pin means this repository reviews itself with whatever shipped
+        # before the last thing — which is how the pin went three weeks stale
+        # before anyone noticed. A SHA here is also not maintainable by a bot:
+        # GITHUB_TOKEN cannot push a commit that touches .github/workflows/, so
+        # keeping a pinned SHA fresh needs a human or a PAT, and nobody came.
+        # Consumers still get a SHA, in CONTRIBUTING.md, where reproducibility is
+        # what they actually need.
+        uses: agents-market/pipeline-action@main v0.4.3
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:
