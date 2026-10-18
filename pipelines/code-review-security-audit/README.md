@@ -102,7 +102,7 @@ agentsmarket pipeline install code-review-security-audit@v1.0.0
     AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
 
 - name: Run security audit
-  uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4
+  uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)
   with:
     pipeline_file: .agentsmarket/pipelines/code-review-security-audit@v1.0.0/pipeline.yaml
     inputs: |

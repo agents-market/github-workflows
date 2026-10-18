@@ -110,7 +110,7 @@ agentsmarket pipeline install style-review@v1.0.0
     AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
 
 - name: Run style review
-  uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4
+  uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)
   with:
     pipeline_file: .agentsmarket/pipelines/style-review@v1.0.0/pipeline.yaml
     inputs: |

@@ -59,7 +59,7 @@ Longer description here. What does it do? When should you use it?
 ## Usage
 
 \`\`\`yaml
-- uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4
+- uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)
   with:
     pipeline_file: ./pipelines/your-pipeline-slug/pipeline.yaml
 \`\`\`
@@ -77,7 +77,7 @@ See `findings_json` action output — array of `{severity, file, line, message, 
 ## Examples
 
 \`\`\`yaml
-- uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4
+- uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)
   with:
     pipeline_file: ./pipelines/your-pipeline-slug/pipeline.yaml
     inputs_json: '{"some_input": "value"}'
@@ -114,7 +114,7 @@ workflows/<your-workflow-name>.yml
 
 Must be:
 - ≤ 250 lines
-- Use only official marketplace actions (`agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4`)
+- Use only official marketplace actions (`agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)`)
 - No hardcoded secrets (use `secrets:` references)
 - Single-purpose (no kitchen-sink workflows)
 
@@ -123,7 +123,30 @@ Must be:
 Always pin to a **full commit SHA**, not a tag:
 
 ```yaml
-uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4
+uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)
+```
+
+We hand you a SHA and dogfood on `main`, which looks inconsistent and is not.
+You pin because a tag that moves turns a PR check into a coin toss — tag `v1` in
+that repository moved, shipped an `action.yml` the runner could not parse, and
+stayed broken for three weeks. We track `main` because we publish the action: a
+pin here means this repository reviews itself with whatever shipped before the
+last thing, which is how it went three weeks stale before anyone noticed.
+
+The SHA above is the release we verified, not a claim that it is the newest. No
+bot updates these docs, and none can be relied on to.
+
+If you want the newest release, take the tag with the newest **commit date** and
+pin its SHA. Do not take it from the version number or from the releases page —
+both of those lie in that repository today:
+
+| what you read | what you get | what is actually newest |
+|---|---|---|
+| highest version, `v1.0.0` | 17 Sep 2026 | `v0.4.4`, 2 Oct 2026 |
+| `releases/latest` | `v0.4.3`, 27 Sep 2026 | `v0.4.4`, 2 Oct 2026 |
+
+```bash
+gh api repos/agents-market/pipeline-action/commits/v0.4.4 --jq .sha
 ```
 
 A tag is a moving pointer. Tag `v1` sat broken for three weeks — it pointed at a
