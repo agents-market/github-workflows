@@ -36,21 +36,16 @@ jobs:
       - name: pipeline-action pin is not behind the newest release
         run: |
           set -euo pipefail
-          REPO=agents-market/pipeline-action
           PIN=$(grep -oE "pipeline-action@[0-9a-f]{40}" .github/workflows/ai-review.yml \
                 | head -1 | cut -d@ -f2)
           [ -n "$PIN" ] || { echo "::error::no pipeline-action SHA pin in ai-review.yml"; exit 1; }
-          NEWEST=""; NEWEST_DATE=""
-          for t in $(gh api --paginate "repos/$REPO/tags" --jq '.[].name'); do
-            d=$(gh api "repos/$REPO/commits/$t" --jq .commit.author.date)
-            if [ -z "$NEWEST_DATE" ] || [ "$d" \> "$NEWEST_DATE" ]; then NEWEST=$t; NEWEST_DATE=$d; fi
-          done
+          NEW=$(.github/scripts/newest-action-release.sh)
           # ahead is fine — pinning main HEAD on purpose is a legitimate choice.
           # only "behind" means we are dogfooding something the consumer no longer gets.
-          STATUS=$(gh api "repos/$REPO/compare/$NEWEST...$PIN" --jq .status)
-          echo "pinned $PIN; newest tag $NEWEST ($NEWEST_DATE); compare=$STATUS"
+          STATUS=$(gh api "repos/agents-market/pipeline-action/compare/$NEW...$PIN" --jq .status)
+          echo "pinned $PIN; newest $NEW; compare=$STATUS"
           if [ "$STATUS" = "behind" ]; then
-            echo "::error::pipeline-action is pinned behind $NEWEST. Bump to: $(gh api "repos/$REPO/commits/$NEWEST" --jq .sha)"
+            echo "::error::pipeline-action is pinned behind $NEW. bump-action-pin.yml opens a PR for this daily; if it has not, bump by hand to $NEW"
             exit 1
           fi
         env:
