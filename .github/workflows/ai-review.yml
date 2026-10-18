@@ -181,7 +181,7 @@ jobs:
         #     from `env:` leaves the key behind.
         # SHA inlined for the same reason — a tag can move, and here the failure
         # is silent.
-        uses: agents-market/pipeline-action@0ed368079a4ebf4e5272bc1694cffedc26d59cc6 # v0.4.3
+        uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf  # v0.4.4 # v0.4.3
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:

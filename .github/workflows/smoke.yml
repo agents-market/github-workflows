@@ -29,6 +29,33 @@ jobs:
         with:
           node-version: 22
 
+      # We publish the action, and a stale pin means the dogfooding run silently
+      # exercises an older runtime than the one the consumer gets. Newest tag by
+      # commit date, NOT by name: in that repo v1.0.0 predates v0.4.4, and tag
+      # `v1` shipped an unparseable action.yml and stayed broken for three weeks.
+      - name: pipeline-action pin is not behind the newest release
+        run: |
+          set -euo pipefail
+          REPO=agents-market/pipeline-action
+          PIN=$(grep -oE "pipeline-action@[0-9a-f]{40}" .github/workflows/ai-review.yml \
+                | head -1 | cut -d@ -f2)
+          [ -n "$PIN" ] || { echo "::error::no pipeline-action SHA pin in ai-review.yml"; exit 1; }
+          NEWEST=""; NEWEST_DATE=""
+          for t in $(gh api --paginate "repos/$REPO/tags" --jq '.[].name'); do
+            d=$(gh api "repos/$REPO/commits/$t" --jq .commit.author.date)
+            if [ -z "$NEWEST_DATE" ] || [ "$d" \> "$NEWEST_DATE" ]; then NEWEST=$t; NEWEST_DATE=$d; fi
+          done
+          # ahead is fine — pinning main HEAD on purpose is a legitimate choice.
+          # only "behind" means we are dogfooding something the consumer no longer gets.
+          STATUS=$(gh api "repos/$REPO/compare/$NEWEST...$PIN" --jq .status)
+          echo "pinned $PIN; newest tag $NEWEST ($NEWEST_DATE); compare=$STATUS"
+          if [ "$STATUS" = "behind" ]; then
+            echo "::error::pipeline-action is pinned behind $NEWEST. Bump to: $(gh api "repos/$REPO/commits/$NEWEST" --jq .sha)"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       # The floor keeps proving that the oldest CLI we support still works.
       # ai-review.yml installs @latest instead, so the two together say how far
       # the published CLI has moved. Installing the floor IS the proof that it

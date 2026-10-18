@@ -59,7 +59,7 @@ Longer description here. What does it do? When should you use it?
 ## Usage
 
 \`\`\`yaml
-- uses: agents-market/pipeline-action@v0.4.x
+- uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4
   with:
     pipeline_file: ./pipelines/your-pipeline-slug/pipeline.yaml
 \`\`\`
@@ -77,7 +77,7 @@ See `findings_json` action output — array of `{severity, file, line, message, 
 ## Examples
 
 \`\`\`yaml
-- uses: agents-market/pipeline-action@v0.4.x
+- uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4
   with:
     pipeline_file: ./pipelines/your-pipeline-slug/pipeline.yaml
     inputs_json: '{"some_input": "value"}'
@@ -114,7 +114,7 @@ workflows/<your-workflow-name>.yml
 
 Must be:
 - ≤ 250 lines
-- Use only official marketplace actions (`agents-market/pipeline-action@v0.4.x`)
+- Use only official marketplace actions (`agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4`)
 - No hardcoded secrets (use `secrets:` references)
 - Single-purpose (no kitchen-sink workflows)
 
@@ -123,7 +123,7 @@ Must be:
 Always pin to a **full commit SHA**, not a tag:
 
 ```yaml
-uses: agents-market/pipeline-action@0ed368079a4ebf4e5272bc1694cffedc26d59cc6 # v0.4.3
+uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4
 ```
 
 A tag is a moving pointer. Tag `v1` sat broken for three weeks — it pointed at a
