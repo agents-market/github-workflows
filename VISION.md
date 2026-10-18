@@ -26,10 +26,12 @@ The test for membership is simple and unforgiving:
 If the answer is "not without reading the docs", the pipeline is not ready to be
 official yet — no matter how good it is.
 
-## 2. The two laws
+## 2. The three laws
 
-Everything below follows from two laws. When they conflict with convenience,
-they win.
+Everything below follows from three laws. When they conflict with convenience,
+they win. The third was added on 2026-10-18, after finding that
+six of our own eighteen stages were paying for a model call to do
+arithmetic.
 
 ### Law 1 — Minimum friction
 
@@ -46,6 +48,55 @@ good the underlying pipeline is.
 
 Each example must be readable at a glance by someone who has never used our
 CLI, and copy-pasteable without editing.
+
+### Law 3 — If a stage can be done without an LLM, it must be
+
+**An LLM is the most expensive, slowest and least predictable tool we have. Use
+it for the one thing only it can do: judgement. Everything else is software's
+job.**
+
+This is not an optimisation, it is a correctness rule. An LLM asked to count
+findings can get the count wrong, and it will get it wrong differently every
+run. Software asked to count findings gets the same answer every time, for
+free, in microseconds, with no API key.
+
+The test for a stage is one question:
+
+> Would a competent engineer's script, written once, produce this output?
+
+If yes, the stage is a script. If the answer needs taste — "is this actually a
+vulnerability?", "which of these matters most?", "explain it in a sentence a
+human will act on" — then it is a model, and only that part should be one.
+
+Applied honestly, most pipelines are mostly not model work:
+
+| Stage kind | Example | Belongs to |
+|---|---|---|
+| Parse, split, count, sort, filter, format | counts by severity, top-5 list, Markdown summary | software |
+| Look it up in a database | CVE lookup, license list, advisory feed | software |
+| Decide whether something is a problem | is this injection? is this a false positive? | **model** |
+| Explain in words a human acts on | remediation advice | **model** |
+
+A stage that mixes the two should be split. The split is not a refactor — the
+model stage gets a smaller, sharper job, and the deterministic part becomes
+testable.
+
+Three costs that disappear with the LLM, and none of them are about money:
+
+1. **Flakiness.** A pipeline that is 60% reliable is not a product. Every
+   instance of Law 3 removed is a run that cannot fail randomly.
+2. **Untestability.** A deterministic stage can have a unit test. A model stage
+   can only be measured across many runs, which is slow, costs money, and is
+   inconclusive at the sample sizes we can afford.
+3. **Availability.** Model stages need a key, a network, and a provider that is
+   up. Script stages need nothing. A pipeline that runs anywhere is worth more
+   than one that runs well somewhere.
+
+**The corollary matters just as much.** Removing the LLM from a stage does not
+mean writing bash inside a pipeline — it means the stage stops being a model
+call. Where that computation lives is a separate question, and the answer must
+work on every consumption path, not just `CLI --local`. See section 4: a stage
+built on `shell:` works in two paths out of three, which is not "works".
 
 ## 3. The ideal end state
 
@@ -183,6 +234,85 @@ answer. Constraining it harder made things worse — 6 of 10, with
 So: keep it, measure it at realistic sizes, and do not advertise it above
 15 000 chars. A pipeline that is reliable at its documented limit is official.
 One that is not, is not.
+
+### Law 3 applied to our own pipelines — audit
+
+Every stage of every canonical pipeline, asked the question from Law 3. This is
+the first honest look; nobody had asked it before.
+
+| Pipeline | Stage | Verdict | Why |
+|---|---|---|---|
+| `code-review-security-audit` | `pattern_scan` | **LLM, but not a scanner** | Named like a scanner, is not one. It asks the model to judge injection, secrets, crypto, access control and then invent a description and a fix for each. That is judgement. What it also does wrong: `lines_scanned` / `hunks_scanned` are counted **by the model**. A `grep -c '^@@'` is exact; a model guessing is not, and differs run to run. |
+| | `deep_review` | **LLM — correct** | Business-logic flaws, IDOR, race conditions. Genuinely judgement. |
+| | `aggregate` | **7 of 8 fields are software** | See below. |
+| `style-review` | `profile_style` | **borderline** | Detects naming/type/literal *patterns*. Half of it is AST or regex work; half is judging whether a pattern is a problem. |
+| | `analyze_style` | **LLM — correct** | Judgement, with a fix suggestion. |
+| | `aggregate_style` | **7 of 8 fields are software** | Same shape as `aggregate`. |
+| `dependency-scanner` | `parse_lockfile` | **already script** | Correct — and it is the cheapest of the three. |
+| | `analyze_vulns` | **should NOT be a model** | See below. |
+| | `aggregate_report` | **software** | Counts and a table. |
+| `test-generator` | `profile_code_behavior` | **borderline** | Same shape as `profile_style`. |
+| | `generate_tests` | **LLM — correct** | Writing tests is the judgement. |
+| | `aggregate_to_test_file` | **software** | Assembles a file. This is the stage that answers in Markdown instead of JSON, because it is a document assembler being asked to emit JSON. |
+| `documentation-generator` | `profile_code_structure` | **software** | AST facts. |
+| | `generate_documentation` | **LLM — correct** | Prose. |
+| | `aggregate_to_markdown` | **software** | Assembly. |
+| `api-design-reviewer` | `profile_api_design` | **borderline** | Surface extraction is software; consistency judgement is not. |
+| | `review_design` | **LLM — correct** | Judgement. |
+| | `aggregate_to_review` | **software** | Counts. |
+
+### `aggregate` in detail
+
+This is the clearest case, and it is the one you asked about.
+
+| Field | Verdict |
+|---|---|
+| `total_findings` | arithmetic — `findings.length` |
+| `critical_count`, `high_count`, `medium_count`, `low_count` | four filters on one field |
+| `recommendations` | take the top 5 by severity, already ordered |
+| `markdown_report` | render a template from the counts above |
+| `overall_risk_score` | the only one that asks for judgement |
+
+Seven of eight fields are decided before any judgement is involved. Asking a
+model for them costs a call, can be wrong, and is different every run — and the
+`output_schema` below the prompt *already specifies every one of them precisely*,
+which is a schema a function could satisfy exactly.
+
+Worse, the schema is what makes this stage fail. `markdown_report` with
+`maxLength: 8000` and a required Markdown structure is the largest free-text
+field in the pipeline, and it is the field most likely to truncate, most likely
+to arrive as prose rather than JSON, and least likely to be read by anyone —
+the listing renders it, the consumer's CI prints it, and a human reads the
+counts.
+
+### `analyze_vulns` in detail
+
+Currently: a model is asked to identify known CVEs for a pinned version, and
+the prompt names NVD, GitHub Advisories, Snyk and OSV as sources it may
+consult.
+
+The model cannot consult them. It has no network and no database — it
+generates from weights. So the stage does not do what its own prompt says; it
+produces a plausible-looking CVE identifier from memory, which is the worst
+possible failure mode for a security tool: confidently wrong, with a severity
+and a confidence score attached that make it look authoritative.
+
+This is the exact defect the other agent hit while building `analyze_vulns`
+without an LLM from OSV.dev, and they were right to hit it. A lookup is a
+lookup. It should be an `http:` call to OSV, deterministic, free, verifiable,
+and correct on versions that were published after any model's training cutoff.
+
+### What this costs us if we ignore it
+
+Of 18 stages across the six pipelines, **at least 6 are software wearing an LLM
+cost**, and one — `analyze_vulns` — is actively unsafe in this form. The
+aggregate stages alone account for roughly a third of the spend on every review,
+to compute numbers a calculator would get right.
+
+`test-generator` is the visible symptom. Its `aggregate_to_test_file` fails
+about one run in three on a large diff, always the same way: the model answers
+with a Markdown document instead of JSON. The stage is assembling a file from
+parts already produced. It should not be able to fail like that.
 
 ## 5. Rules that follow
 
