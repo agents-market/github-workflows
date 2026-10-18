@@ -20,6 +20,25 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Dogfooding that trails the proven floor is worse than none: this file
+      # proves the one command works on CLI N, then every PR in this repo is
+      # reviewed on an older one, so the thing being exercised is not the thing
+      # consumers install. It happened — ai-review.yml sat on 0.11.2, which
+      # pulls runtime 0.5.0, which predates stage.maxTokens. Every dogfooded run
+      # was exercising the exact truncation this repository exists to fix.
+      - name: Dogfooding CLI is not behind the proven floor
+        run: |
+          set -euo pipefail
+          FLOOR=$(grep -oE '@agentsmarket/cli@[0-9]+\.[0-9]+\.[0-9]+' "$GITHUB_WORKFLOW_PATH" | head -1 | grep -oE '[0-9.]+$')
+          DOG=$(grep -oE "CLI_VERSION: '[0-9]+\.[0-9]+\.[0-9]+'" .github/workflows/ai-review.yml | grep -oE '[0-9.]+')
+          [ -n "$FLOOR" ] && [ -n "$DOG" ] || { echo "::error::could not read a CLI pin from either workflow"; exit 1; }
+          LOW=$(printf '%s\n%s\n' "$DOG" "$FLOOR" | sort -V | head -1)
+          if [ "$DOG" != "$FLOOR" ] && [ "$LOW" = "$DOG" ]; then
+            echo "::error::ai-review.yml dogfoods on CLI $DOG but smoke.yml proves $FLOOR. Raise CLI_VERSION in ai-review.yml."
+            exit 1
+          fi
+          echo "dogfood CLI $DOG is not behind floor $FLOOR"
+
       - uses: actions/setup-node@v5
         with:
           node-version: 22
