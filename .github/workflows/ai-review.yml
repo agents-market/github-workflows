@@ -64,7 +64,7 @@ permissions:
   issues: write
 
 env:
-  CLI_VERSION: '0.11.2'   # must be >= the smoke test's pin; the guard in smoke.yml
+  CLI_VERSION: '0.12.4'   # must be >= the smoke test's pin; the guard in smoke.yml
                            # fails if dogfooding trails what we have proven works
 
 jobs:
