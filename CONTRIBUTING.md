@@ -146,3 +146,5 @@ Two related traps when writing workflows by hand — both cost a round-trip on
 ## License
 
 By contributing, you agree to license your contribution under MIT (matching this repo).
+
+<!-- pin probe: exercises ai-review.yml against the new pipeline-action pin -->
