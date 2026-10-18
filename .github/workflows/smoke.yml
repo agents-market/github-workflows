@@ -25,6 +25,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Runs first, and costs nothing. ai-review.yml never executes on a push to
+      # main, so a file this consequential is otherwise only checked when someone
+      # opens a pull request. All three breakages that actually happened here are
+      # static — a dangling `env:`, the `env` context in a `uses:` step's `with:`,
+      # a ref with a comment welded onto it — and this catches each one before it
+      # reaches main rather than on the next PR.
+      - name: Workflow files are structurally sound
+        run: python3 .github/scripts/check-workflows.py
+
       - uses: actions/setup-node@v5
         with:
           node-version: 22
