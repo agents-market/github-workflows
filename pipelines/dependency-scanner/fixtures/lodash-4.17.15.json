@@ -1,0 +1,7 @@
+{
+  "name": "known-vulnerable-fixture",
+  "version": "1.0.0",
+  "description": "Not a real project. A pinned lodash and minimist so the scanner has something with published advisories to find. See fixtures/README.md.",
+  "dependencies": { "lodash": "4.17.15" },
+  "devDependencies": { "minimist": "1.2.0" }
+}
