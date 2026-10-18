@@ -29,7 +29,7 @@ on:
         description: 'Version of each pipeline to install from the marketplace'
         required: false
         type: string
-        default: '2.0.3'
+        default: ''
       focus_area:
         description: 'Override focus_area for both pipelines. Leave unset to keep each pipeline own default.'
         required: false
