@@ -29,7 +29,7 @@ on:
         description: 'Version of each pipeline to install from the marketplace'
         required: false
         type: string
-        default: ''
+        default: '2.0.3'
       focus_area:
         description: 'Override focus_area for both pipelines. Leave unset to keep each pipeline own default.'
         required: false
@@ -84,12 +84,12 @@ jobs:
         # ${{ matrix.pipeline.x }} renders as nothing.
         pipeline:
           - slug: code-review-security-audit
-            version: ${{ inputs.pipeline_version || '2.0.3' }}
+            version: ${{ inputs.pipeline_version }}
             focus_area: ${{ inputs.focus_area || 'security' }}
             severity: ${{ inputs.severity || 'medium' }}
             label: security audit
           - slug: style-review
-            version: ${{ inputs.pipeline_version || '2.0.3' }}
+            version: ${{ inputs.pipeline_version }}
             focus_area: ${{ inputs.focus_area || 'all' }}
             severity: ${{ inputs.severity || 'low' }}
             label: style review
