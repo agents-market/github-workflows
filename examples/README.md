@@ -88,7 +88,16 @@ and each pipeline's own README describes its inputs and outputs.
 
 - Node.js 20 or newer.
 - `MINIMAX_API_KEY` for real runs. It is the model provider's key, not ours —
-  requests go to MiniMax, not to a server we proxy.
+  requests go to MiniMax, not to a server we proxy. **You cannot substitute
+  another provider today**, and it is worth knowing why before you go looking
+  for a setting. The Action takes `provider`, `model`, `primary_provider` and
+  `primary_model` inputs, and all four are ignored for these pipelines: a stage
+  that declares its own provider wins (`stages.ts:495`), and a stage's own model
+  wins over everything (`model-resolver.ts:232`). Both fields also read as
+  literals — `provider: ${input.provider}` is not resolved from inputs, it is
+  treated as a provider literally named `${input.provider}` and the run fails
+  with "not registered". Lifting this needs the runtime to resolve input refs on
+  those two fields; it is written up rather than promised.
 - Agent identity. `pipeline call` downloads from the marketplace, which is an
   authenticated request. Run `npx @agentsmarket/cli init` once to generate a
   keypair.
