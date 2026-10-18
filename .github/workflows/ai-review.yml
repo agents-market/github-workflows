@@ -172,7 +172,15 @@ jobs:
 
       - name: Run pipeline
         id: review
-        # SHA inlined: `env` is invalid in `uses:` — fails validation with 0 jobs.
+        # Two ways to make this file fail with zero jobs and no useful message, both
+        # hit while building it:
+        #   - the `env` context is not available in a `uses:` step's `with:`.
+        #     A path has to travel as a step output instead.
+        #   - a top-level `env:` with nothing under it parses as `env: null`,
+        #     which is not a mapping and is rejected outright. Deleting a key
+        #     from `env:` leaves the key behind.
+        # SHA inlined for the same reason — a tag can move, and here the failure
+        # is silent.
         uses: agents-market/pipeline-action@0ed368079a4ebf4e5272bc1694cffedc26d59cc6 # v0.4.3
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
