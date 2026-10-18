@@ -26,10 +26,9 @@ on:
   workflow_call:
     inputs:
       pipeline_version:
-        description: 'Version of each pipeline to install from the marketplace'
+        description: 'Pin both pipelines to this version. Unset installs whatever is current — right for repositories that own the pipelines and can fix one, wrong for repositories that want a PR check that does not move under them.'
         required: false
         type: string
-        default: '2.0.4'
       focus_area:
         description: 'Override focus_area for both pipelines. Leave unset to keep each pipeline own default.'
         required: false
@@ -85,12 +84,12 @@ jobs:
         # ${{ matrix.pipeline.x }} renders as nothing.
         pipeline:
           - slug: code-review-security-audit
-            version: ${{ inputs.pipeline_version || '2.0.4' }}
+            version: ${{ inputs.pipeline_version }}
             focus_area: ${{ inputs.focus_area || 'security' }}
             severity: ${{ inputs.severity || 'medium' }}
             label: security audit
           - slug: style-review
-            version: ${{ inputs.pipeline_version || '2.0.4' }}
+            version: ${{ inputs.pipeline_version }}
             focus_area: ${{ inputs.focus_area || 'all' }}
             severity: ${{ inputs.severity || 'low' }}
             label: style review
@@ -115,8 +114,30 @@ jobs:
           agentsmarket init
           chmod 600 ~/.config/agentsmarket/agent.key
 
+      # No version by default. We publish the pipelines, we can publish a fix
+      # within minutes, and a pin here means this repository reviews itself with
+      # the release before the last one — which is how it sat on a CLI old
+      # enough to ignore stage.maxTokens while the smoke test proved the next
+      # one worked. Callers who want reproducibility pass pipeline_version.
       - name: Install pipeline from marketplace
-        run: agentsmarket pipeline install ${{ matrix.pipeline.slug }}@${{ matrix.pipeline.version }}
+        env:
+          SLUG: ${{ matrix.pipeline.slug }}
+          VERSION: ${{ matrix.pipeline.version }}
+        run: |
+          set -euo pipefail
+          SPEC="$SLUG"
+          [ -n "$VERSION" ] && SPEC="$SLUG@$VERSION"
+          agentsmarket pipeline install "$SPEC"
+          # install writes <slug>@<resolved> even when no version was asked
+          # for, and pipeline_file needs that concrete name. Read it back from
+          # the lockfile rather than guessing.
+          RESOLVED=$(python3 -c "
+          import json
+          lock = json.load(open('.agentsmarket/pipelines/pipeline.lock.yaml'))
+          print(next(p['version'] for p in lock['pipelines'] if p['slug'] == '$SLUG'))
+          ")
+          echo "installed $SLUG@$RESOLVED"
+          echo "PIPELINE_FILE=.agentsmarket/pipelines/$SLUG@$RESOLVED/pipeline.yaml" >> "$GITHUB_ENV"
 
       - name: Collect diff
         id: diff
@@ -151,7 +172,7 @@ jobs:
           provider: minimax
           model: MiniMax-M3
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
-          pipeline_file: .agentsmarket/pipelines/${{ matrix.pipeline.slug }}@${{ matrix.pipeline.version }}/pipeline.yaml
+          pipeline_file: ${{ env.PIPELINE_FILE }}
 
       - name: Upsert summary comment
         if: always() && github.event_name == 'pull_request'

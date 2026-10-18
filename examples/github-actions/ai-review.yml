@@ -22,5 +22,10 @@ permissions:
 jobs:
   review:
     uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<full-commit-sha>
+    with:
+      # Pin it. The workflow defaults to whatever is current, which is right for
+      # the repository that owns the pipelines and wrong for yours: a PR check
+      # that moves under you is not a check.
+      pipeline_version: '2.0.4'
     secrets:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}

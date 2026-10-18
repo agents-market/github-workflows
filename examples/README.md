@@ -38,11 +38,18 @@ permissions:
 jobs:
   review:
     uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<full-commit-sha>
+    with:
+      pipeline_version: '2.0.4'
     secrets:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
 Pin a **full commit SHA**, never a tag: a tag can move under you, a SHA cannot.
+
+Pin `pipeline_version` too. Left unset it installs whatever is current, which is
+what the repository owning the pipelines wants — it can fix and republish one —
+and is the wrong default for you: a PR check that moves under you is not a
+check. Bump it deliberately.
 
 This reviews with `code-review-security-audit` and `style-review`, and **fails
 the check when a pipeline fails** rather than reporting success it did not
