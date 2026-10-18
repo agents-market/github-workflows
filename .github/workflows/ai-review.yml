@@ -187,7 +187,7 @@ jobs:
         # keeping a pinned SHA fresh needs a human or a PAT, and nobody came.
         # Consumers still get a SHA, in CONTRIBUTING.md, where reproducibility is
         # what they actually need.
-        uses: agents-market/pipeline-action@main v0.4.3
+        uses: agents-market/pipeline-action@main
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:

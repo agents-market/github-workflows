@@ -37,9 +37,22 @@ jobs:
         run: |
           set -euo pipefail
           REPO=agents-market/pipeline-action
-          REF=$(grep -oE "pipeline-action@[A-Za-z0-9._/-]+" .github/workflows/ai-review.yml \
-                | head -1 | cut -d@ -f2)
-          [ -n "$REF" ] || { echo "::error::no pipeline-action ref in ai-review.yml"; exit 1; }
+          # Read the ref the way the runner does — parsed, not grepped. A grep for
+          # `pipeline-action@<ref>` stops at the first space, so a ref with a
+          # stray comment glued onto it parses as valid and then fails to resolve
+          # in every job at once. That happened here, and this check passed it.
+          REF=$(python3 -c "
+          import yaml
+          d = yaml.safe_load(open('.github/workflows/ai-review.yml'))
+          for j in d['jobs'].values():
+              for s in j.get('steps', []):
+                  u = str(s.get('uses', ''))
+                  if u.startswith('agents-market/pipeline-action@'):
+                      ref = u.split('@', 1)[1]
+                      assert ref and not any(c.isspace() for c in ref), f'glued onto the ref: {u!r}'
+                      print(ref); raise SystemExit
+          raise SystemExit('no pipeline-action step found in ai-review.yml')
+          ")
           D=$(mktemp -d)
           gh api "repos/$REPO/contents/action.yml?ref=$REF" --jq .content | base64 -d > "$D/action.yml"
           gh api "repos/$REPO/contents/dist/index.js?ref=$REF" --jq .size > "$D/dist-size"
