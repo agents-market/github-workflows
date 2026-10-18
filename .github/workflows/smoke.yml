@@ -25,7 +25,7 @@ jobs:
           node-version: 22
 
       - name: Install CLI
-        run: npm install -g @agentsmarket/cli@0.12.2
+        run: npm install -g @agentsmarket/cli@0.12.4
 
       # Downloading from the marketplace is an authenticated request, so a
       # runner needs an identity. Without this the one command fails with

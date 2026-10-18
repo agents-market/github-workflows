@@ -167,73 +167,48 @@ repository's README can fail, this repository is not ready.
 
 ## 4. Where we actually are
 
-Measured, not assumed. Everything below was verified against the live
-marketplace and the current CLI.
+Measured, not assumed. Every row was checked against the published artifact on
+a clean directory with an empty npm cache, on 2026-10-18.
 
 | Ideal | Actual | Gap |
 |---|---|---|
-| One command downloads and runs | `pipeline call style-review@2.0.3 --local` searches the filesystem and fails — it never downloads | **CLI does not parse `<slug>@<version>` on `call`** |
-| Install then call works | Install writes `.agentsmarket/pipelines/style-review@2.0.3/`, but `call` does not look there. **The CLI prints a run command that fails.** | **`call` ignores the lockfile install just wrote** |
-| First README command runs | README says `style-review@v1.0.0`; the server rejects it — `version must be a valid semver string (X.Y.Z)` | **the leading `v` is not accepted** |
-| Consumer file is minimal | 40 lines, ~26 of them comments | trim to the five-line target |
-| Examples exist for the website | `examples/` is empty apart from `.gitkeep` | **nothing to embed** |
-| Every pipeline reliable | `style-review` 100%, `code-review-security-audit` 100%, `test-generator` **17 of 20** across 6k and 15k diffs but **10 of 14** at 50k | fails only on very large diffs — see below |
+| One command downloads and runs | `npx @agentsmarket/cli pipeline call style-review@2.0.4 --local --inputs '{...}'` installs and runs on CLI 0.12.4 + runtime 0.5.2, returning real findings for a real diff | **closed** |
+| A first-ever command works | Both `style-review@2.0.4` and `style-review@v2.0.4` resolve; the v-prefix is accepted | **closed** |
+| The CLI a consumer gets is installable | 0.12.3 shipped `workspace:*` verbatim and could not be installed at all (`EUNSUPPORTEDPROTOCOL`). Fixed in 0.12.4, which `publish.sh` now prevents | closed; 0.12.3 is dead weight for 72h |
+| Every stage does the minimum work | At least 6 of 18 stages are software paying for an LLM call; `analyze_vulns` asks a model to recall CVEs | **open — see the audit below** |
+| Paid server-side invocation works | `pipeline call` without `--local` fails at payment: `INVALID_LINK: shared_link does not match derivation`, on 0.12.2 and 0.12.4 alike | **open — pre-existing, server-side** |
+| Consumer file is five lines | 18 lines; the `on:`/`permissions`/`secrets` header is the rest | needs a CI system that allows `uses:` at workflow top level |
+| Examples exist for the website | `examples/README.md` and `examples/github-actions/ai-review.yml`, both run against the live marketplace | **closed** |
+| Every pipeline reliable | `style-review` 100%, `code-review-security-audit` 100%, `test-generator` 5/6 at 6 000 chars, 6/6 at 15 000, 10/14 at 50 000 | fails only on very large diffs |
 
 ### The blocking items
 
-**1. `call` now works in one command.** The gap that mattered most is closed
-and verified end to end: `agents-market/main` #33, published as CLI 0.12.2 with
-runtime 0.5.1, downloads and runs the pipeline from a clean directory. Both
-`style-review@2.0.4` and `style-review@v2.0.4` resolve.
+**1. One command works, verified.** From an empty directory with an empty npm
+cache, one command installed CLI 0.12.4, pulled runtime 0.5.2, downloaded
+`style-review@2.0.4` and returned findings for a real diff. It is not a mock
+and not a claim about a mock.
 
-**2. The v-prefix works.** `style-review@v2.0.4` is accepted. Releases here are
-tagged `v0.12.2`, so this is the form people type first.
+**2. The providers are finally registered.** CLI 0.12.4 carries the registry
+fix: a spec declaring `provider: openai` or `anthropic` used to fail under the
+CLI while working under the GitHub Action, because only the Action registered
+them.
 
-**3. The first README command runs.** It points at 2.0.4, which exists.
-
-**4. The promise is checked.** `.github/workflows/smoke.yml` runs both commands
-on every push to `main` and fails loudly if either stops working. It went red
-three times on its way green — once because the published CLI could not do it,
-once because the runner had no identity, once because `code_diff` is required —
-and each failure was a real defect rather than a flaky test.
+**3. The promise is checked.** `.github/workflows/smoke.yml` runs both command
+forms on every push to `main`, pinned to the CLI floor. It went red three times
+on its way green — once because the published CLI could not do it, once because
+the runner had no identity, once because `code_diff` is required — and each
+failure was a real defect rather than a flake.
 
 ### Still open
 
 | Item | State |
 |---|---|
-| `examples/` is empty | Nothing for the website to embed yet. This is the largest remaining gap. |
-| `test-generator` at 50k-char diffs | Degraded, not broken. Measured against the published artifact: 5/6 at 6 000 chars, 6/6 at 15 000, 10/14 at 50 000. The 50 000 figure was measured against the local spec before publication. |
-| Consumer file is 18 lines, not 5 | The `on:`/`permissions`/`secrets` header is unavoidable; the rest is what we will trim when a CI system supports `uses:` at workflow top level. |
-| Server silently overwrote four pipelines at `2.0.1` | Fixed in the server repo on 2026-10-14 (#12), not yet deployed. The published `2.0.1` specs now carry `maxTokens`, and the pre-fix copies are unrecoverable. Publishing those four again under a fresh version is the only way to get a clean history. |
-| Four pipelines still sit at `2.0.1` | `style-review` and `code-review-security-audit` are at 2.0.3 with the fixes. The other four were republished in place, so their fixes live under the version they already had. |
-| `maxTokens` needs CLI ≥ 0.12.2 | Published 2.0.3 specs depend on it. Anything older ignores the field silently and falls back to 4096. The smoke test pins the floor. |
-
-### A note on test-generator
-
-It looked broken and mostly is not. Measured against the artifact consumers
-actually install, `test-generator@2.0.1`:
-
-| diff size | result |
-|---|---|
-| 6 000 chars | 5 of 6 |
-| 15 000 chars | 6 of 6 |
-| 50 000 chars | 10 of 14 |
-
-The earlier "fails one run in three" figure came from the 50 000-char case
-alone, measured against the local spec. That is the size limit of the input,
-not a broken pipeline — and 50 000 is the documented maximum, so the worst case
-is a legitimate use.
-
-The failure itself is worth knowing about, because it is not a tuning problem:
-the model answers with a Markdown document instead of JSON. The prompt asks for
-`markdown_report` containing "Markdown summary with generated test code
-snippets, code fences", and the model produces exactly that as its whole
-answer. Constraining it harder made things worse — 6 of 10, with
-`markdown_report` simply missing from the reply.
-
-So: keep it, measure it at realistic sizes, and do not advertise it above
-15 000 chars. A pipeline that is reliable at its documented limit is official.
-One that is not, is not.
+| Paid server-mode `pipeline call` returns `INVALID_LINK` | Pre-existing, reproduces on 0.12.2, so not a regression from 0.12.4. The check is in `packages/server/src/lib/variant-d.ts:253` — the CLI and the server derive `shared_link` from different inputs. The documented quick start uses `--local` and is unaffected. Handed over. |
+| Six stages should not call a model | The audit below. `analyze_vulns` is the urgent one: it asks a model to recall CVE identifiers it has no database for. |
+| `shell:` stages only work with `--local` | The deterministic replacement for those six stages needs a primitive that works on every consumption path, not a flag. `http:` for the CVE lookup. |
+| `maxTokens` needs CLI ≥ 0.12.2 | Published specs depend on it. Anything older ignores the field silently and falls back to 4096. The smoke test pins the floor, now at 0.12.4. |
+| Four pipelines sit at `2.0.1` | `style-review` and `code-review-security-audit` are at 2.0.4. The other four were republished in place, so their fixes live under the version they already had. |
+| CI in `agents-market/main` cannot run | GitHub Actions reports: *recent account payments have failed or your spending limit needs to be increased*. Every job fails to start in ~2s. Local runs are green (958 CLI + 1421 runtime + 1936 server), but no CI signal exists until billing is fixed. |
 
 ### Law 3 applied to our own pipelines — audit
 
