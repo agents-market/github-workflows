@@ -146,3 +146,5 @@ Two related traps when writing workflows by hand — both cost a round-trip on
 ## License
 
 By contributing, you agree to license your contribution under MIT (matching this repo).
+
+<!-- dogfood probe: forces a pull_request run of ai-review.yml -->
