@@ -25,25 +25,18 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Dogfooding CLI is not behind the proven floor
-        run: |
-          set -euo pipefail
-          DOG=$(grep -oE "CLI_VERSION: '[0-9]+\.[0-9]+\.[0-9]+'" .github/workflows/ai-review.yml | grep -oE '[0-9.]+')
-          echo "dogfood=$DOG floor=${CLI_FLOOR}"
-          [ -n "$DOG" ] || { echo "::error::no CLI_VERSION pin found in ai-review.yml"; exit 1; }
-          LOW=$(printf '%s\n%s\n' "$DOG" "$CLI_FLOOR" | sort -V | head -1)
-          if [ "$DOG" != "$CLI_FLOOR" ] && [ "$LOW" = "$DOG" ]; then
-            echo "::error::ai-review.yml dogfoods on CLI $DOG but this file proves $CLI_FLOOR. Raise CLI_VERSION in ai-review.yml."
-            exit 1
-          fi
-          echo "dogfood CLI $DOG is not behind floor $CLI_FLOOR"
-
       - uses: actions/setup-node@v5
         with:
           node-version: 22
 
-      - name: Install CLI
-        run: npm install -g @agentsmarket/cli@${{ env.CLI_FLOOR }}
+      # The floor keeps proving that the oldest CLI we support still works.
+      # ai-review.yml installs @latest instead, so the two together say how far
+      # the published CLI has moved. Installing the floor IS the proof that it
+      # is published; there is nothing left for a separate assertion to check.
+      - name: Install CLI floor
+        run: |
+          npm install -g @agentsmarket/cli@${{ env.CLI_FLOOR }}
+          echo "floor=${{ env.CLI_FLOOR }} latest=$(npm view @agentsmarket/cli version)"
 
       # Downloading from the marketplace is an authenticated request, so a
       # runner needs an identity. Without this the one command fails with

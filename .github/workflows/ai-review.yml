@@ -63,8 +63,7 @@ permissions:
   issues: write
 
 env:
-  CLI_VERSION: '0.12.4'   # must be >= the smoke test's pin; the guard in smoke.yml
-                           # fails if dogfooding trails what we have proven works
+
 
 jobs:
   review:
@@ -104,7 +103,12 @@ jobs:
           node-version: '22'
 
       - name: Install agentsmarket CLI
-        run: npm install -g @agentsmarket/cli@${{ env.CLI_VERSION }}
+        # @latest, deliberately. We publish the CLI; a pin here means this
+        # repository reviews itself with whatever shipped before the last thing.
+        # smoke.yml keeps proving the floor still works — this is the other
+        # half: if a new release breaks the run, our own PR review is what
+        # says so, which is the entire reason to dogfood on latest.
+        run: npm install -g @agentsmarket/cli@latest
 
       - name: Mint throwaway agent identity
         run: |

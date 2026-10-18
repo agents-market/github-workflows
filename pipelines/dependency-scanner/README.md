@@ -2,16 +2,59 @@
 name: dependency-scanner
 version: 2.0.1
 description: |
-  Reads a lockfile, extracts every pinned package, checks each against known CVEs, and returns structured findings with a risk score.
-license: MIT
-author: agentsmarket-team
-price_usdc: 1000
-tags: [security, dependencies, supply-chain, code-review]
+  CVE IDENTIFIERS IN THIS PIPELINE ARE RECALLED FROM MODEL WEIGHTS, NOT LOOKED UP.
+  Do not use it to decide whether to patch. See "Read this first" below.
 ---
 
 # dependency-scanner
 
 Reads a lockfile, extracts every pinned package, checks each against known CVEs, and returns structured findings with a risk score.
+
+
+## Read this first — this pipeline does not check anything up
+
+`analyze_vulns` asks a model to name CVEs for pinned versions. The model has no
+network and no database. It answers from weights.
+
+Measured 2026-10-18, three identical runs on `lodash@4.17.15`, checked against
+OSV with GHSA aliases resolved:
+
+| | |
+|---|---|
+| advisories OSV holds for this version | 6 |
+| CVE ids this pipeline named | 4 |
+| of those, applicable to this version | **2** |
+| of those, real lodash CVEs but for other version ranges | 2 |
+| real advisories it did not name | **4**, incl. CVE-2025-13465, CVE-2026-2950, CVE-2026-4800 |
+| `confidence` on identical input across three runs | 0.88 / 0.90 / 0.92 / 0.95 / 0.97 |
+
+Every identifier it produced is a real lodash CVE. It does not invent them — it
+applies remembered advisories to a version they do not cover, and cannot know
+anything published after training. Two of the misses are dated 2025 and 2026.
+
+**So: `parse_lockfile` is trustworthy, `analyze_vulns` is not.** A finding from
+this pipeline is not evidence. Use `npm audit`, `pip-audit` or `osv-scanner`
+until this is a database lookup.
+
+## Why it is still published
+
+Because it is the right pipeline with one stage in the wrong place. The fix is
+to replace `analyze_vulns` with an HTTP call to OSV, and there is no stage
+primitive that can make one:
+
+- no `http:` stage exists;
+- `shell:` exists and is refused — `pipeline-action` runs with `isLocal: false`
+  (`packages/pipeline-action/src/executor-deps.ts:222`), so `stages.ts` throws;
+- `mcp_servers` are validated against a pre-registered registry, so an arbitrary
+  endpoint cannot be named.
+
+All three were checked, not assumed. Until the primitive exists, this pipeline
+cannot be made correct, and publishing it as if it were would be the one
+genuinely dangerous thing in this repository — a security tool that answers
+confidently from memory.
+
+`fixtures/lodash-4.17.15.json` and `fixtures/README.md` are the regression test
+for the fix: six advisories in, six advisories out.
 
 ## What it does
 

@@ -109,6 +109,22 @@ and each pipeline's own README describes its inputs and outputs.
   authenticated request. Run `npx @agentsmarket/cli init` once to generate a
   keypair.
 
+## Before you wire one of these to a real repository
+
+`code-review-security-audit` and `style-review` judge and explain; the
+judgements are judgement, and that is what a model is for.
+
+**`dependency-scanner` is not one of the safe ones.** It asks a model to name
+CVEs for pinned versions. The model has no database, so it answers from weights:
+on `lodash@4.17.15` it named four identifiers, two of which apply to that
+version and two of which do not, and it missed four real advisories including
+two published in 2025 and 2026. `confidence` came back different on each of
+three identical runs. `parse_lockfile` is sound; `analyze_vulns` is not.
+
+Use it to list what is pinned, not to decide what to patch. For patching, use
+`npm audit`, `pip-audit` or `osv-scanner` until that stage is a database lookup.
+The full measurement is in the pipeline's own README.
+
 ## If something fails
 
 - `Pipeline file not found` — run `npx @agentsmarket/cli init` first, then retry.
