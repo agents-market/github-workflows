@@ -125,6 +125,7 @@ jobs:
       # enough to ignore stage.maxTokens while the smoke test proved the next
       # one worked. Callers who want reproducibility pass pipeline_version.
       - name: Install pipeline from marketplace
+        id: install
         env:
           SLUG: ${{ matrix.pipeline.slug }}
           VERSION: ${{ matrix.pipeline.version }}
@@ -142,7 +143,11 @@ jobs:
           print(next(p['version'] for p in lock['pipelines'] if p['slug'] == '$SLUG'))
           ")
           echo "installed $SLUG@$RESOLVED"
-          echo "PIPELINE_FILE=.agentsmarket/pipelines/$SLUG@$RESOLVED/pipeline.yaml" >> "$GITHUB_ENV"
+          # a step output, not $GITHUB_ENV: the `env` context is not available
+          # in a `uses:` step's `with:`, and reaching for it fails validation
+          # with zero jobs — the failure mode this file already warns about two
+          # steps below.
+          echo "path=.agentsmarket/pipelines/$SLUG@$RESOLVED/pipeline.yaml" >> "$GITHUB_OUTPUT"
 
       - name: Collect diff
         id: diff
@@ -177,7 +182,7 @@ jobs:
           provider: minimax
           model: MiniMax-M3
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
-          pipeline_file: ${{ env.PIPELINE_FILE }}
+          pipeline_file: ${{ steps.install.outputs.path }}
 
       - name: Upsert summary comment
         if: always() && github.event_name == 'pull_request'
