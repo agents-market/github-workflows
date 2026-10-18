@@ -26,10 +26,9 @@ on:
   workflow_call:
     inputs:
       pipeline_version:
-        description: 'Version of each pipeline to install from the marketplace'
+        description: 'Pin both pipelines to this version. Unset installs whatever is current — right for repositories that own the pipelines and can fix one, wrong for repositories that want a PR check that does not move under them.'
         required: false
         type: string
-        default: ''
       focus_area:
         description: 'Override focus_area for both pipelines. Leave unset to keep each pipeline own default.'
         required: false
@@ -62,9 +61,6 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
-
-env:
-  CLI_VERSION: '0.11.2'   # pinned: @latest once pulled a release with an unpublished dep (E404)
 
 jobs:
   review:
@@ -104,7 +100,12 @@ jobs:
           node-version: '22'
 
       - name: Install agentsmarket CLI
-        run: npm install -g @agentsmarket/cli@${{ env.CLI_VERSION }}
+        # @latest, deliberately. We publish the CLI; a pin here means this
+        # repository reviews itself with whatever shipped before the last thing.
+        # smoke.yml keeps proving the floor still works — this is the other
+        # half: if a new release breaks the run, our own PR review is what
+        # says so, which is the entire reason to dogfood on latest.
+        run: npm install -g @agentsmarket/cli@latest
 
       - name: Mint throwaway agent identity
         run: |
@@ -114,8 +115,37 @@ jobs:
           agentsmarket init
           chmod 600 ~/.config/agentsmarket/agent.key
 
+      # No version by default. We publish the pipelines, we can publish a fix
+      # within minutes, and a pin here means this repository reviews itself with
+      # the release before the last one — which is how it sat on a CLI old
+      # enough to ignore stage.maxTokens while the smoke test proved the next
+      # one worked. Callers who want reproducibility pass pipeline_version.
       - name: Install pipeline from marketplace
-        run: agentsmarket pipeline install ${{ matrix.pipeline.slug }}@${{ matrix.pipeline.version }}
+        id: install
+        env:
+          SLUG: ${{ matrix.pipeline.slug }}
+          VERSION: ${{ matrix.pipeline.version }}
+        run: |
+          set -euo pipefail
+          # `if`, not `&&`: with `set -e` a false `&&` chain ends the step, and
+          # an unpinned install is exactly the case where VERSION is empty.
+          SPEC="$SLUG"
+          if [ -n "$VERSION" ]; then SPEC="$SLUG@$VERSION"; fi
+          agentsmarket pipeline install "$SPEC"
+          # install writes <slug>@<resolved> even when no version was asked
+          # for, and pipeline_file needs that concrete name. Read it back from
+          # the lockfile rather than guessing.
+          RESOLVED=$(python3 -c "
+          import json
+          lock = json.load(open('.agentsmarket/pipelines/pipeline.lock.yaml'))
+          print(next(p['version'] for p in lock['pipelines'] if p['slug'] == '$SLUG'))
+          ")
+          echo "installed $SLUG@$RESOLVED"
+          # A step output, not $GITHUB_ENV: the `env` context is not available in
+          # a `uses:` step's `with:`. Reaching for it fails validation with zero
+          # jobs, which is the failure mode this file warns about two steps
+          # down and the one I walked into doing it.
+          echo "path=.agentsmarket/pipelines/$SLUG@$RESOLVED/pipeline.yaml" >> "$GITHUB_OUTPUT"
 
       - name: Collect diff
         id: diff
@@ -150,7 +180,7 @@ jobs:
           provider: minimax
           model: MiniMax-M3
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
-          pipeline_file: .agentsmarket/pipelines/${{ matrix.pipeline.slug }}@${{ matrix.pipeline.version }}/pipeline.yaml
+          pipeline_file: ${{ steps.install.outputs.path }}
 
       - name: Upsert summary comment
         if: always() && github.event_name == 'pull_request'
