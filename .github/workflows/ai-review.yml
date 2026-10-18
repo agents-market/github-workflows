@@ -26,9 +26,10 @@ on:
   workflow_call:
     inputs:
       pipeline_version:
-        description: 'Pin both pipelines. Unset installs current.'
+        description: 'Version of each pipeline to install from the marketplace'
         required: false
         type: string
+        default: ''
       focus_area:
         description: 'Override focus_area for both pipelines. Leave unset to keep each pipeline own default.'
         required: false
@@ -63,6 +64,7 @@ permissions:
   issues: write
 
 env:
+  CLI_VERSION: '0.11.2'   # pinned: @latest once pulled a release with an unpublished dep (E404)
 
 jobs:
   review:
@@ -82,12 +84,12 @@ jobs:
         # ${{ matrix.pipeline.x }} renders as nothing.
         pipeline:
           - slug: code-review-security-audit
-            version: ${{ inputs.pipeline_version }}
+            version: ${{ inputs.pipeline_version || '2.0.3' }}
             focus_area: ${{ inputs.focus_area || 'security' }}
             severity: ${{ inputs.severity || 'medium' }}
             label: security audit
           - slug: style-review
-            version: ${{ inputs.pipeline_version }}
+            version: ${{ inputs.pipeline_version || '2.0.3' }}
             focus_area: ${{ inputs.focus_area || 'all' }}
             severity: ${{ inputs.severity || 'low' }}
             label: style review
@@ -102,7 +104,7 @@ jobs:
           node-version: '22'
 
       - name: Install agentsmarket CLI
-        run: npm install -g @agentsmarket/cli@latest
+        run: npm install -g @agentsmarket/cli@${{ env.CLI_VERSION }}
 
       - name: Mint throwaway agent identity
         run: |
