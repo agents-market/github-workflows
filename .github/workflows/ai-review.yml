@@ -257,7 +257,13 @@ jobs:
       # not complete says so, in the place a reader looks first, instead of
       # reading green.
       - name: Record that the review did not complete
-        if: github.event_name == 'push' && steps.review.outcome == 'failure' && steps.review_retry.outcome != 'success'
+        # `always()` for the same reason as the retry above, and it bit exactly once
+        # more: this step is the one that records a failed review, so it runs precisely
+        # when the job is failing, which is when GitHub skips steps without it. Verified
+        # by forcing both attempts to fail on a push — the step was skipped while the
+        # message it was written for was on screen. Three steps in this file now need it.
+        if: always() && github.event_name == 'push' && steps.review.outcome == 'failure' \
+          && steps.review_retry.outcome != 'success'
         env:
           SLUG: ${{ matrix.pipeline.slug }}
         run: |
