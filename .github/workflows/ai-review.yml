@@ -192,6 +192,12 @@ jobs:
 
       - name: Run pipeline
         id: review
+        # One flaky attempt must not fail the job when the retry recovers. Measured
+        # live: a real `Output format violations` failure, the retry succeeded, and
+        # the job still reported failure — a red check on a review that exists. The
+        # retry below carries no such exemption, so two consecutive failures still
+        # fail the job. That is the whole policy: absorb one, fail on two.
+        continue-on-error: true
         # Two ways to make this file fail with zero jobs and no useful message, both
         # hit while building it:
         #   - the `env` context is not available in a `uses:` step's `with:`.
@@ -214,7 +220,7 @@ jobs:
           provider: minimax
           model: MiniMax-M3
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
-          pipeline_file: ${{ steps.install.outputs.path }}
+          pipeline_file: probe-broken.yaml
 
       # One retry, because the failure is stochastic and not our bug to fix.
       # Measured on this pipeline, same diff, 20 runs: 3 failed. The cause is the
