@@ -79,8 +79,17 @@ stages:
 
       Return JSON:
       {
-        "endpoints": [{"endpoint": "...", "method": "...", "request_schema": "...", "response_schema": "...", "auth": "...", "versioning": "..."}, ...],
-        "stats": { "endpoints_count": n, "detected_style": "rest | graphql | trpc" }
+        "endpoints": [
+          {
+            "endpoint": "/users",
+            "method": "GET",
+            "request_schema": "none",
+            "response_schema": "{id: number, name: string}",
+            "auth": "bearer",
+            "versioning": "none"
+          }
+        ],
+        "stats": { "endpoints_count": 1, "detected_style": "rest" }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.
@@ -123,11 +132,21 @@ stages:
 
       Return JSON:
       {
-        "findings": [...],
-        "summary": {
-          "total_findings": int,
-          "endpoints_reviewed": int
-        }
+        "findings": [
+          {
+            "endpoint": "GET /users",
+            "method": "GET",
+            "severity": "high",
+            "category": "pagination",
+            "standard_violated": "REST pagination",
+            "description": "Collection endpoint returns every row with no limit",
+            "suggested_fix": "Accept limit and cursor; default 50, cap 200",
+            "example": "before: GET /users | after: GET /users?limit=50&cursor=abc",
+            "confidence": 0.9
+          }
+        ],
+        "summary": { "total_findings": 1, "endpoints_reviewed": 3 }
+      }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.

@@ -78,8 +78,16 @@ stages:
 
       Return JSON:
       {
-        "units": [{"unit": "...", "kind": "...", "line_range": "...", "exported": true, "documented": false}, ...],
-        "stats": { "units_count": n, "exported_count": n, "undocumented_count": n, "language": "$input.language" }
+        "units": [
+          {
+            "unit": "calculateDiscount",
+            "kind": "function",
+            "line_range": "42-67",
+            "exported": true,
+            "documented": false
+          }
+        ],
+        "stats": { "units_count": 1, "exported_count": 1, "undocumented_count": 1, "language": "$input.language" }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.
@@ -118,11 +126,19 @@ stages:
 
       Return JSON:
       {
-        "findings": [...],
-        "summary": {
-          "total_findings": int,
-          "units_analyzed": int
-        }
+        "findings": [
+          {
+            "unit": "calculateTotal",
+            "line": 88,
+            "severity": "medium",
+            "category": "jsdoc",
+            "description": "Exported function has no doc comment, so its return type is undiscoverable",
+            "generated_doc": "/** Sum line items after discounts and tax. Returns the total in cents. */",
+            "confidence": 0.85
+          }
+        ],
+        "summary": { "total_findings": 1, "units_analyzed": 4 }
+      }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.

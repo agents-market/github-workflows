@@ -16,21 +16,21 @@ Reads a lockfile, extracts every pinned package, checks each against known CVEs,
 `analyze_vulns` asks a model to name CVEs for pinned versions. The model has no
 network and no database. It answers from weights.
 
-Measured 2026-10-18, three identical runs on `lodash@4.17.15`, checked against
-OSV with GHSA aliases resolved:
+Measured 2026-10-19, three identical runs on `lodash@4.17.15`, checked against
+OSV with GHSA aliases resolved. (18 Oct, before the output templates were fixed:
+4 named, 2 applicable, 4 missed. The fix gained one and lost none.)
 
 | | |
 |---|---|
 | advisories OSV holds for this version | 6 |
-| CVE ids this pipeline named | 4 |
-| of those, applicable to this version | **2** |
+| CVE ids this pipeline named | 5 |
+| of those, applicable to this version | **3** |
 | of those, real lodash CVEs but for other version ranges | 2 |
-| real advisories it did not name | **4**, incl. CVE-2025-13465, CVE-2026-2950, CVE-2026-4800 |
-| `confidence` on identical input across three runs | 0.88 / 0.90 / 0.92 / 0.95 / 0.97 |
+| real advisories it did not name | **3**: CVE-2025-13465, CVE-2026-2950, CVE-2026-4800 |
 
 Every identifier it produced is a real lodash CVE. It does not invent them — it
 applies remembered advisories to a version they do not cover, and cannot know
-anything published after training. Two of the misses are dated 2025 and 2026.
+anything published after training. All three misses are dated 2025 and 2026.
 
 **So: `parse_lockfile` is trustworthy, `analyze_vulns` is not.** A finding from
 this pipeline is not evidence. Use `npm audit`, `pip-audit` or `osv-scanner`

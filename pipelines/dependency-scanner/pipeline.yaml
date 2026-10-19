@@ -76,8 +76,10 @@ stages:
 
       Return JSON:
       {
-        "packages": [{"name": "...", "version": "..."}, ...],
-        "stats": { "total_packages": n, "ecosystem": "$input.ecosystem" }
+        "packages": [
+          { "name": "semver", "version": "7.6.0" }
+        ],
+        "stats": { "total_packages": 1, "ecosystem": "$input.ecosystem" }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.
@@ -114,11 +116,25 @@ stages:
 
       Return JSON:
       {
-        "packages": [...],
-        "summary": {
-          "total_packages": int,
-          "vulnerable_count": int
-        }
+        "packages": [
+          {
+            "name": "acme-utils",
+            "version": "3.2.1",
+            "is_vulnerable": true,
+            "cves": [
+              {
+                "id": "CVE-2024-00000",
+                "severity": "critical",
+                "description": "Prototype pollution when merging untrusted options",
+                "fix_version": "3.2.4",
+                "confidence": 0.9
+              }
+            ],
+            "fix_version": "3.2.4"
+          }
+        ],
+        "summary": { "total_packages": 1, "vulnerable_count": 1 }
+      }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.

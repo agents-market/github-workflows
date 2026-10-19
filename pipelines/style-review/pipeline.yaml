@@ -86,8 +86,15 @@ stages:
 
       Return JSON:
       {
-        "regions": [{"region": "...", "line_range": "...", "pattern": "...", "observation": "..."}, ...],
-        "stats": { "regions_count": n, "language": "{{language}}" }
+        "regions": [
+          {
+            "region": "getUserById",
+            "line_range": "42-67",
+            "pattern": "naming",
+            "observation": "returns a single record but is named getUsers"
+          }
+        ],
+        "stats": { "regions_count": 1, "language": "{{language}}" }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.
@@ -135,11 +142,20 @@ stages:
 
       Return JSON:
       {
-        "findings": [...],
-        "summary": {
-          "total_findings": int,
-          "regions_analyzed": int
-        }
+        "findings": [
+          {
+            "file": "src/api/users.ts",
+            "line": 42,
+            "severity": "high",
+            "category": "naming",
+            "description": "Variable named data holds a single user record",
+            "fix_suggestion": "Rename to user",
+            "estimated_impact": "A misleading name is read on every request to this handler",
+            "confidence": 0.9
+          }
+        ],
+        "summary": { "total_findings": 1, "regions_analyzed": 3 }
+      }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.

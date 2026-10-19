@@ -89,8 +89,16 @@ stages:
 
       Return JSON:
       {
-        "functions": [{"function": "...", "signature": "...", "line_range": "...", "branches": [...], "edge_cases": [...]}, ...],
-        "stats": { "functions_count": n, "language": "$input.language" }
+        "functions": [
+          {
+            "function": "calculateDiscount",
+            "signature": "calculateDiscount(price: number, userType: string): number",
+            "line_range": "42-67",
+            "branches": ["userType === 'vip'", "price < 0", "default return"],
+            "edge_cases": ["negative price", "unknown userType", "price = 0"]
+          }
+        ],
+        "stats": { "functions_count": 1, "language": "$input.language" }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.
@@ -130,11 +138,19 @@ stages:
 
       Return JSON:
       {
-        "test_cases": [...],
-        "summary": {
-          "total_cases": int,
-          "functions_covered": int
-        }
+        "test_cases": [
+          {
+            "function": "calculateDiscount",
+            "line": 52,
+            "severity": "high",
+            "test_case": "returns 0 for negative price",
+            "description": "The price < 0 branch has no coverage",
+            "test_snippet": "it('returns 0 for negative price', () => { expect(calculateDiscount(-1, 'regular')).toBe(0) })",
+            "confidence": 0.85
+          }
+        ],
+        "summary": { "total_cases": 1, "functions_covered": 1 }
+      }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.

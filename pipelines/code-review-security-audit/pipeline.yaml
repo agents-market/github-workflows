@@ -84,8 +84,18 @@ stages:
 
       Return JSON:
       {
-        "findings": [...],
-        "stats": { "lines_scanned": n, "hunks_scanned": n }
+        "findings": [
+          {
+            "id": 1,
+            "severity": "high",
+            "line": 42,
+            "description": "User input reaches a shell command without escaping",
+            "fix_suggestion": "Replace exec() with execFile() and pass arguments as an array",
+            "cwe_id": "CWE-78",
+            "confidence": 0.9
+          }
+        ],
+        "stats": { "lines_scanned": 87, "hunks_scanned": 2 }
       }
 
       Reply with valid JSON only. No prose, no markdown fences.
@@ -120,9 +130,21 @@ stages:
 
       Return JSON:
       {
-        "findings": [...],
-        "rejected": [{"id": int, "reason": str}],
-        "new_findings_count": int
+        "findings": [
+          {
+            "id": 1,
+            "severity": "high",
+            "line": 42,
+            "description": "User input reaches a shell command without escaping",
+            "fix_suggestion": "Replace exec() with execFile() and pass arguments as an array",
+            "cwe_id": "CWE-78",
+            "confidence": 0.9
+          }
+        ],
+        "rejected": [
+          { "id": 3, "reason": "test fixture, not reachable from user input" }
+        ],
+        "new_findings_count": 1
       }
 
       Reply with valid JSON only. No prose, no markdown fences.
