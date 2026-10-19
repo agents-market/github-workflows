@@ -220,7 +220,7 @@ jobs:
           provider: minimax
           model: MiniMax-M3
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
-          pipeline_file: probe-broken.yaml
+          pipeline_file: ${{ steps.install.outputs.path }}
 
       # One retry, because the failure is stochastic and not our bug to fix.
       # Measured on this pipeline, same diff, 20 runs: 3 failed. The cause is the
