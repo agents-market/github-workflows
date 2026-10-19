@@ -41,7 +41,13 @@ permissions:
 env:
   # Pinned explicitly: `npx @agentsmarket/cli` without a version pulls
   # latest, and a release once shipped an unpublished dependency (E404).
-  CLI_VERSION: '0.12.5'   # ships the ${input.X} fix in stage.provider/model;
+  CLI_VERSION: '0.12.5'
+  # Job-level, because each `run:` is its own shell. Defining MARKER inside the
+  # detect step meant the write-back step — which needs the same path — saw an
+  # empty variable, `echo sha > ""` failed, and the step died before committing
+  # anything. Every publish since then went unrecorded, so the repository sat a
+  # full version behind the catalogue on all six pipelines with nothing to say so.
+  PUBLISH_MARKER: .github/last-published-sha   # ships the ${input.X} fix in stage.provider/model;
                            # 0.12.4 rejects provider: ${input.provider} at validation
 
 jobs:
@@ -81,7 +87,7 @@ jobs:
             # So the base is the last commit that actually published, recorded by the
             # write-back step. Falling back to `github.event.before` keeps the first
             # run working, and HEAD~1 keeps a manual re-run working.
-            MARKER=.github/last-published-sha
+            MARKER="$PUBLISH_MARKER"
             BASE=""
             if [ -f "$MARKER" ]; then
               BASE=$(tr -d ' \n' < "$MARKER")
@@ -224,8 +230,14 @@ jobs:
           set -euo pipefail
           IFS=',' read -ra PIPELINES <<< "${{ steps.detect.outputs.changed }}"
           for SLUG in "${PIPELINES[@]}"; do
-            NEW=$(grep -oE 'Version: +[0-9]+\.[0-9]+\.[0-9]+' "/tmp/$SLUG.log" | tail -1 | grep -oE '[0-9.]+$' || true)
-            [ -n "$NEW" ] || { echo "  $SLUG: no Version: line, leaving file alone"; continue; }
+            # Two shapes, and only the first was ever read. A real publish prints
+            # `Version: X.Y.Z`; the dedup path prints
+            #   `Already published (unchanged): <name> vX.Y.Z`
+            # with no Version line at all. Reading only the first meant an unchanged
+            # publish left the repository's version behind the catalogue's.
+            NEW=$(grep -oE '(Version: +[0-9]+\.[0-9]+\.[0-9]+|Already published \(unchanged\): [^ ]+ v[0-9]+\.[0-9]+\.[0-9]+)' \
+                  "/tmp/$SLUG.log" | tail -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$' || true)
+            [ -n "$NEW" ] || { echo "  $SLUG: no version in CLI output, leaving file alone"; continue; }
             FILE="pipelines/$SLUG/pipeline.yaml"
             CUR=$(grep -m1 -E '^version:' "$FILE" | grep -oE '[0-9.]+')
             if [ "$NEW" = "$CUR" ]; then
@@ -245,8 +257,8 @@ jobs:
           # Record what was published, so the next detector can start from here rather
           # than from the previous commit. Without this, any failed publish
           # strands every change it contained and nothing reports that.
-          echo "${{ github.sha }}" > "$MARKER"
-          git add "$MARKER"
+          echo "${{ github.sha }}" > "$PUBLISH_MARKER"
+          git add "$PUBLISH_MARKER"
 
           if git diff --cached --quiet; then
             echo "Nothing to commit"
