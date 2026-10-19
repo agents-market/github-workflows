@@ -28,7 +28,8 @@ permissions:
 env:
   # Pinned explicitly: `npx @agentsmarket/cli` without a version pulls
   # latest, and a release once shipped an unpublished dependency (E404).
-  CLI_VERSION: '0.12.4'
+  CLI_VERSION: '0.12.5'   # ships the ${input.X} fix in stage.provider/model;
+                           # 0.12.4 rejects provider: ${input.provider} at validation
 
 jobs:
   publish:
