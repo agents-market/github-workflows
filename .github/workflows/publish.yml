@@ -56,10 +56,30 @@ jobs:
             # github.event.before, not HEAD~1: a push of three commits moves
             # HEAD~1 past the first two, and those pipelines would never
             # publish. Falls back to HEAD~1 for a manual re-run.
-            BASE="${{ github.event.before }}"
+            #
+            # `github.event.before` is still wrong whenever a publish fails. On 19
+            # October the run for ae35566 died on CONTENT_CHANGED_SAME_VERSION, and
+            # the next push's diff contained only the two pipelines that commit also
+            # touched — so the four whose prompts changed in ae35566 looked untouched
+            # and were never published, with nothing anywhere saying so. Three
+            # publishes failed here for one reason or another, and each one stranded
+            # everything it had changed.
+            #
+            # So the base is the last commit that actually published, recorded by the
+            # write-back step. Falling back to `github.event.before` keeps the first
+            # run working, and HEAD~1 keeps a manual re-run working.
+            MARKER=.github/last-published-sha
+            BASE=""
+            if [ -f "$MARKER" ]; then
+              BASE=$(tr -d ' \n' < "$MARKER")
+            fi
+            if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              BASE="${{ github.event.before }}"
+            fi
             if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
               BASE="HEAD~1"
             fi
+            echo "base commit: ${BASE} (last successful publish)"
             # README.md as well as pipeline.yaml: the README frontmatter becomes
             # the marketplace listing and ships inside the bundle, so a
             # README-only fix has to republish. #23 corrected two README
@@ -208,6 +228,12 @@ jobs:
             git add "$FILE" "pipelines/$SLUG/README.md" 2>/dev/null || git add "$FILE"
             echo "  $SLUG: $CUR -> $NEW"
           done
+
+          # Record what was published, so the next detector can start from here rather
+          # than from the previous commit. Without this, any failed publish
+          # strands every change it contained and nothing reports that.
+          echo "${{ github.sha }}" > "$MARKER"
+          git add "$MARKER"
 
           if git diff --cached --quiet; then
             echo "Nothing to commit"
