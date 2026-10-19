@@ -61,7 +61,7 @@ on:
   # It costs two pipeline runs per push, which is the price of the dogfooding being
   # real instead of aspirational.
   push:
-    branches: [main, 'probe/push-record']
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -220,7 +220,7 @@ jobs:
           provider: minimax
           model: MiniMax-M3
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
-          pipeline_file: probe-broken.yaml
+          pipeline_file: ${{ steps.install.outputs.path }}
 
       # One retry, because the failure is stochastic and not our bug to fix.
       # Measured on this pipeline, same diff, 20 runs: 3 failed. The cause is the
@@ -250,7 +250,7 @@ jobs:
           provider: minimax
           model: MiniMax-M3
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
-          pipeline_file: probe-broken.yaml
+          pipeline_file: ${{ steps.install.outputs.path }}
 
       # The exemption above is only safe if it is not silent. On a push there is
       # no PR to comment on, so the record goes in the job summary: a run that did
