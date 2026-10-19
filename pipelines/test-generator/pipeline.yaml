@@ -4,6 +4,12 @@
 # price_usdc: 1000
 # tags: ["tests", "code-review", "vertical-wedge"]
 # public_preview: AI test generation. Vitest/pytest edge-case suites from bare functions. Detects untested branches, missing mocks for external calls, unbounded error paths. $0.001/call.
+# Provider and model are inputs, not constants. `provider: minimax` used to be
+# hardcoded on every stage because R6's error message says to add exactly that,
+# and it was followed to the letter — which meant a consumer holding only an
+# OpenRouter key paid for MiniMax and had no way out. The model must be switched
+# together with the provider: the registry and the adapter disagree about which
+# models a provider serves, and the adapter is what decides.
 name: test-generator
 version: 2.0.1
 description: AI unit test generator for code diffs — analyzes function signatures, branches, and edge cases, then generates test cases in the project's style. Structured per-test-case findings with severity + snippet, aggregate test score 0-10, prioritized coverage recommendations, ready-to-commit test file. Vertical wedge expansion path — test generation as paid AI agent service.

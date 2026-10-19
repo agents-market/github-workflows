@@ -4,6 +4,12 @@
 # price_usdc: 1000
 # tags: ["api-design", "code-review", "vertical-wedge"]
 # public_preview: AI API design review of REST/GraphQL/tRPC surfaces. Structured per-endpoint findings (severity + category + violated standard + fix + example), aggregate design score 0-10. $0.001/call.
+# Provider and model are inputs, not constants. `provider: minimax` used to be
+# hardcoded on every stage because R6's error message says to add exactly that,
+# and it was followed to the letter — which meant a consumer holding only an
+# OpenRouter key paid for MiniMax and had no way out. The model must be switched
+# together with the provider: the registry and the adapter disagree about which
+# models a provider serves, and the adapter is what decides.
 name: api-design-reviewer
 version: 2.0.1
 description: AI API design review of REST/GraphQL/tRPC surfaces — extracts endpoints from specs or route code, evaluates naming, versioning, error handling, idempotency, pagination, and security against best practices. Structured per-endpoint findings with severity + category + violated standard + fix + example. Vertical wedge expansion path — API design review as paid AI agent service.

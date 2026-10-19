@@ -16,6 +16,12 @@
 #   - language (enum typescript/javascript/python/rust/go/solidity/generic, default generic)
 #   - focus_area (enum naming/types/exports/magic_numbers/all, default all)
 #   - severity_threshold (enum low/medium/high/critical, default low)
+# Provider and model are inputs, not constants. `provider: minimax` used to be
+# hardcoded on every stage because R6's error message says to add exactly that,
+# and it was followed to the letter — which meant a consumer holding only an
+# OpenRouter key paid for MiniMax and had no way out. The model must be switched
+# together with the provider: the registry and the adapter disagree about which
+# models a provider serves, and the adapter is what decides.
 name: style-review
 version: 2.0.4
 description: AI code style review of diffs — identifies naming inconsistencies, missing types, unused exports, magic numbers, and codebase-pattern violations. Structured findings with severity + category + fix + impact. Vertical wedge expansion path — code style review as paid AI agent service.
