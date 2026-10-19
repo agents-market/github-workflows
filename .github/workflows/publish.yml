@@ -15,11 +15,24 @@ on:
         required: false
         type: string
       bump:
-        description: 'Version bump type (overrides auto-detect)'
+        # `patch`, not `auto`. The publish step passes
+        #   --bump-version "${{ inputs.bump || 'patch' }}"
+        # and `'auto'` is non-empty, so it wins that fallback and the CLI is handed a
+        # level it does not know. `bumpSemver` (cli/src/lib/semver-bump.ts:34) has
+        # cases for `patch`, `minor` and `major` and a `default: return null`, so it
+        # returned null and the run died on the very first pipeline:
+        #   Cannot bump version "2.0.1" — it is not X.Y.Z.
+        #   CONTENT_CHANGED_SAME_VERSION: pipeline 'api-design-reviewer' v2.0.1
+        # Nothing ever implemented auto-detect, so `auto` was an option that could
+        # only fail. It stayed invisible on push, where `inputs.bump` is empty and the
+        # fallback applies — only `workflow_dispatch` hit it, which is how the four
+        # pipelines stranded by the failed `ae35566` run turned out to be still
+        # exactly where they were.
+        description: 'Version bump type'
         required: false
         type: choice
-        options: [auto, patch, minor, major]
-        default: 'auto'
+        options: [patch, minor, major]
+        default: 'patch'
 
 permissions:
   contents: write
