@@ -51,6 +51,17 @@ on:
         required: true
   pull_request:
     branches: [main]
+  # This workflow reviews every pull request in the repository, and until now
+  # nothing ever ran it against main. A push to main produced a run with zero jobs,
+  # so a broken ai-review.yml sat there unnoticed — three times in two days. The
+  # comment steps are already gated on `github.event_name == 'pull_request'` and the
+  # diff step falls back to HEAD~1, so a push needs no new machinery: it reviews the
+  # last commit, posts nothing, and fails loudly if the wiring is broken.
+  #
+  # It costs two pipeline runs per push, which is the price of the dogfooding being
+  # real instead of aspirational.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
