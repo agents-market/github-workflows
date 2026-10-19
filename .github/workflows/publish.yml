@@ -102,9 +102,10 @@ jobs:
           # catalogue should be able to reproduce that, so a version that went
           # backwards fails here rather than in a consumer's install command.
           for SLUG in "${PIPELINES[@]}"; do
-            WAS=$(git show "HEAD~1:pipelines/$SLUG/pipeline.yaml" 2>/dev/null \
+            FILE="pipelines/$SLUG/pipeline.yaml"
+            WAS=$(git show "HEAD~1:$FILE" 2>/dev/null \
                   | grep -m1 -E '^version:' | tr -d ' \r' | cut -d: -f2 || true)
-            NOW=$(grep -m1 -E '^version:' "pipelines/$SLUG/pipeline.yaml" | tr -d ' \r' | cut -d: -f2)
+            NOW=$(grep -m1 -E '^version:' "$FILE" | tr -d ' \r' | cut -d: -f2)
             [ -z "$WAS" ] && continue
             LOW=$(printf '%s\n%s\n' "$NOW" "$WAS" | sort -V | head -1)
             if [ "$LOW" = "$NOW" ] && [ "$NOW" != "$WAS" ]; then
@@ -112,6 +113,27 @@ jobs:
               exit 1
             fi
             echo "$SLUG: $WAS -> $NOW"
+          done
+
+          # The version lives twice and only one copy is authoritative, which is
+          # exactly why they drifted. `pipeline publish` reads the commented
+          # header (`# version:`), because `extractMetadata` parses the leading
+          # comment block and stops at the first real field; `validate`, the
+          # marketplace listing and every check here read the `version:` field.
+          # On 19 October the header said 2.0.3 while the field said 2.0.4, so the
+          # bump computed 2.0.3 -> 2.0.4, republished a version that already
+          # existed, and the run died on CONTENT_CHANGED_SAME_VERSION.
+          #
+          # A pipeline whose two versions disagree has no correct behaviour, so
+          # refuse it here rather than publish whichever one the drift hits.
+          for SLUG in "${PIPELINES[@]}"; do
+            FIELD=$(grep -m1 -E '^version:' "pipelines/$SLUG/pipeline.yaml" | tr -d ' \r' | cut -d: -f2)
+            HEAD_V=$(grep -m1 -E '^#[[:space:]]*version:' "pipelines/$SLUG/pipeline.yaml" \
+                     | tr -d ' \r' | sed -E 's/^#[[:space:]]*version:[[:space:]]*//')
+            if [ "$FIELD" != "$HEAD_V" ]; then
+              echo "::error::$SLUG carries two versions: field '$FIELD', commented header '$HEAD_V'. The CLI bumps the header and everything else reads the field, so publishing would fail or publish the wrong one."
+              exit 1
+            fi
           done
 
           for SLUG in "${PIPELINES[@]}"; do
@@ -178,6 +200,10 @@ jobs:
               continue
             fi
             sed -i -E "s/^version: .*/version: $NEW/" "$FILE"
+            # The commented header too. Writing only the field is what let the two
+            # drift a full version apart: the CLI kept bumping a header nobody
+            # updated, until it republished a version that already existed.
+            sed -i -E "s/^#[[:space:]]*version: .*/# version: $NEW/" "$FILE"
             sed -i -E "s/^version: .*/version: $NEW/" "pipelines/$SLUG/README.md" 2>/dev/null || true
             git add "$FILE" "pipelines/$SLUG/README.md" 2>/dev/null || git add "$FILE"
             echo "  $SLUG: $CUR -> $NEW"

@@ -1,5 +1,5 @@
 # name: code-review-security-audit
-# version: 2.0.3
+# version: 2.0.4
 # description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate risk score, and prioritized remediation recommendations. Vertical wedge: code review as paid AI agent service at $0.001/call.
 # price_usdc: 1000
 # tags: ["security", "code-review", "vertical-wedge"]
