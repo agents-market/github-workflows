@@ -216,12 +216,35 @@ jobs:
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
           pipeline_file: ${{ steps.install.outputs.path }}
 
+      # One retry, because the failure is stochastic and not our bug to fix.
+      # Measured on this pipeline, same diff, 20 runs: 3 failed. The cause is the
+      # model's JSON, not the spec — `Bad escaped character in JSON at position
+      # NNNN` inside a long free-text field — and nothing in a pipeline spec can
+      # prevent it. `model_params.temperature` would be the lever and the runtime
+      # never reads it; `output_retry: loop` is already the ceiling of three
+      # attempts. So the retry lives here, where it is honest: one extra run costs
+      # ~0.01 USDC and takes about a minute.
+      #
+      # Downstream steps read `steps.review_retry.outputs.* || steps.review.outputs.*`,
+      # so whichever attempt produced output is the one that gets posted.
+      - name: Run pipeline (retry)
+        id: review_retry
+        if: steps.review.outcome == 'failure'
+        uses: agents-market/pipeline-action@main
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        with:
+          provider: minimax
+          model: MiniMax-M3
+          inputs_json: ${{ steps.diff.outputs.inputs_json }}
+          pipeline_file: ${{ steps.install.outputs.path }}
+
       # The exemption above is only safe if it is not silent. On a push there is
       # no PR to comment on, so the record goes in the job summary: a run that did
       # not complete says so, in the place a reader looks first, instead of
       # reading green.
       - name: Record that the review did not complete
-        if: github.event_name == 'push' && steps.review.outcome == 'failure'
+        if: github.event_name == 'push' && steps.review.outcome == 'failure' && steps.review_retry.outcome != 'success'
         env:
           SLUG: ${{ matrix.pipeline.slug }}
         run: |
@@ -240,11 +263,11 @@ jobs:
         uses: actions/github-script@v7
         env:
           MARKER: ${{ matrix.pipeline.slug }}
-          RESULT: ${{ steps.review.outputs.result_json }}
-          COST: ${{ steps.review.outputs.total_cost_usdc }}
-          DURATION: ${{ steps.review.outputs.total_ms }}
-          COUNTS: ${{ steps.review.outputs.findings_count_json }}
-          RUN_STATUS: ${{ steps.review.outputs.status }}
+          RESULT: ${steps.review_retry.outputs.result_json || steps.review.outputs.result_json}
+          COST: ${steps.review_retry.outputs.total_cost_usdc || steps.review.outputs.total_cost_usdc}
+          DURATION: ${steps.review_retry.outputs.total_ms || steps.review.outputs.total_ms}
+          COUNTS: ${steps.review_retry.outputs.findings_count_json || steps.review.outputs.findings_count_json}
+          RUN_STATUS: ${steps.review_retry.outputs.status || steps.review.outputs.status}
         with:
           script: |
             try {
@@ -292,7 +315,7 @@ jobs:
         continue-on-error: true
         uses: actions/github-script@v7
         env:
-          FINDINGS: ${{ steps.review.outputs.findings_json }}
+          FINDINGS: ${steps.review_retry.outputs.findings_json || steps.review.outputs.findings_json}
           MARKER: ${{ matrix.pipeline.slug }}
         with:
           script: |
