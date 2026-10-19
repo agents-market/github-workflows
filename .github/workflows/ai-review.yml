@@ -272,7 +272,11 @@ jobs:
             echo "this commit — it is already merged, and the model is intermittently"
             echo "unreliable on output format — but the review for \`$SLUG\` is"
             echo "**missing**, not clean."
-          } >> "$GITHUB_STEP_SUMMARY"
+          # `tee`, so the message is also in the run log. Writing only to the
+          # summary file means a failed review leaves no trace in the log at all,
+          # and "it is not in the log" is exactly the wrong conclusion to reach
+          # when you are trying to find out why.
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upsert summary comment
         if: always() && github.event_name == 'pull_request'
