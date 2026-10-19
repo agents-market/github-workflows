@@ -229,7 +229,14 @@ jobs:
       # so whichever attempt produced output is the one that gets posted.
       - name: Run pipeline (retry)
         id: review_retry
-        if: steps.review.outcome == 'failure'
+        # `always()` is load-bearing. Without it the retry is dead code exactly when
+        # it is needed: on a pull request the job is strict, the first attempt
+        # fails the step, and GitHub skips every later step that has not opted out
+        # of the implicit `success()`. The probe PR showed `Run pipeline (retry):
+        # skipped` immediately after `Run pipeline: failure`. On push the job's
+        # continue-on-error hides this, which is why a push-only check would not
+        # have found it.
+        if: always() && steps.review.outcome == 'failure'
         uses: agents-market/pipeline-action@main
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
