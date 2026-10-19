@@ -93,6 +93,27 @@ jobs:
         run: |
           set -euo pipefail
           IFS=',' read -ra PIPELINES <<< "${{ steps.detect.outputs.changed }}"
+
+          # A version must only ever go up. The sibling repository publishing
+          # pipeline-action has this exact disease today: tag `v1.0.0` is dated
+          # 17 September while `v0.4.4` is 2 October, and `releases/latest`
+          # answers `v0.4.3`. "Take the highest version" and "take the newest
+          # release" return different, both-wrong answers. Nothing in a pipeline
+          # catalogue should be able to reproduce that, so a version that went
+          # backwards fails here rather than in a consumer's install command.
+          for SLUG in "${PIPELINES[@]}"; do
+            WAS=$(git show "HEAD~1:pipelines/$SLUG/pipeline.yaml" 2>/dev/null \
+                  | grep -m1 -E '^version:' | tr -d ' \r' | cut -d: -f2 || true)
+            NOW=$(grep -m1 -E '^version:' "pipelines/$SLUG/pipeline.yaml" | tr -d ' \r' | cut -d: -f2)
+            [ -z "$WAS" ] && continue
+            LOW=$(printf '%s\n%s\n' "$NOW" "$WAS" | sort -V | head -1)
+            if [ "$LOW" = "$NOW" ] && [ "$NOW" != "$WAS" ]; then
+              echo "::error::$SLUG version went backwards: $WAS -> $NOW. Consumers pinning $WAS would silently keep the old pipeline."
+              exit 1
+            fi
+            echo "$SLUG: $WAS -> $NOW"
+          done
+
           for SLUG in "${PIPELINES[@]}"; do
             echo "::group::Validating $SLUG"
             [ -f "pipelines/$SLUG/README.md" ] || {
