@@ -263,11 +263,11 @@ jobs:
         uses: actions/github-script@v7
         env:
           MARKER: ${{ matrix.pipeline.slug }}
-          RESULT: ${steps.review_retry.outputs.result_json || steps.review.outputs.result_json}
-          COST: ${steps.review_retry.outputs.total_cost_usdc || steps.review.outputs.total_cost_usdc}
-          DURATION: ${steps.review_retry.outputs.total_ms || steps.review.outputs.total_ms}
-          COUNTS: ${steps.review_retry.outputs.findings_count_json || steps.review.outputs.findings_count_json}
-          RUN_STATUS: ${steps.review_retry.outputs.status || steps.review.outputs.status}
+          RESULT: ${{steps.review_retry.outputs.result_json || steps.review.outputs.result_json}}
+          COST: ${{steps.review_retry.outputs.total_cost_usdc || steps.review.outputs.total_cost_usdc}}
+          DURATION: ${{steps.review_retry.outputs.total_ms || steps.review.outputs.total_ms}}
+          COUNTS: ${{steps.review_retry.outputs.findings_count_json || steps.review.outputs.findings_count_json}}
+          RUN_STATUS: ${{steps.review_retry.outputs.status || steps.review.outputs.status}}
         with:
           script: |
             try {
@@ -315,7 +315,7 @@ jobs:
         continue-on-error: true
         uses: actions/github-script@v7
         env:
-          FINDINGS: ${steps.review_retry.outputs.findings_json || steps.review.outputs.findings_json}
+          FINDINGS: ${{steps.review_retry.outputs.findings_json || steps.review.outputs.findings_json}}
           MARKER: ${{ matrix.pipeline.slug }}
         with:
           script: |
