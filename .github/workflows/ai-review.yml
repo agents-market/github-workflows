@@ -257,7 +257,11 @@ jobs:
       # not complete says so, in the place a reader looks first, instead of
       # reading green.
       - name: Record that the review did not complete
-        if: github.event_name == 'push' && steps.review.outcome == 'failure' && steps.review_retry.outcome != 'success'
+        # `always()` for the same reason as the retry above, and it bit exactly once
+        # more: this step exists to record a failed review, so it runs precisely when the
+        # job is failing, which is when GitHub skips steps that do not opt out of the
+        # implicit `success()`. Verified by forcing both attempts to fail on a push.
+        if: always() && github.event_name == 'push' && steps.review.outcome == 'failure' && steps.review_retry.outcome != 'success'
         env:
           SLUG: ${{ matrix.pipeline.slug }}
         run: |
@@ -268,7 +272,11 @@ jobs:
             echo "this commit — it is already merged, and the model is intermittently"
             echo "unreliable on output format — but the review for \`$SLUG\` is"
             echo "**missing**, not clean."
-          } >> "$GITHUB_STEP_SUMMARY"
+          # `tee`, so the message is also in the run log. Writing only to the
+          # summary file means a failed review leaves no trace in the log at all,
+          # and "it is not in the log" is exactly the wrong conclusion to reach
+          # when you are trying to find out why.
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upsert summary comment
         if: always() && github.event_name == 'pull_request'
