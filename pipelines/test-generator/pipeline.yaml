@@ -1,11 +1,11 @@
 # name: test-generator
-# version: 2.0.3
+# version: 2.0.4
 # description: AI unit test generator for code diffs — analyzes function signatures, branches, and edge cases, then generates test cases in the project's style. Structured per-test-case findings with severity + snippet, aggregate test score 0-10, prioritized coverage recommendations, ready-to-commit test file. Vertical wedge expansion path — test generation as paid AI agent service.
 # price_usdc: 1000
 # tags: ["tests", "code-review", "vertical-wedge"]
 # public_preview: AI test generation. Vitest/pytest edge-case suites from bare functions. Detects untested branches, missing mocks for external calls, unbounded error paths. $0.001/call.
 name: test-generator
-version: 2.0.3
+version: 2.0.4
 description: AI unit test generator for code diffs — analyzes function signatures, branches, and edge cases, then generates test cases in the project's style. Structured per-test-case findings with severity + snippet, aggregate test score 0-10, prioritized coverage recommendations, ready-to-commit test file. Vertical wedge expansion path — test generation as paid AI agent service.
 author_id: '0x44986097Fd624d3B17De6f82fdB829Db189990f7'
 license: MIT
