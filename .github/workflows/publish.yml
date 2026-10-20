@@ -113,7 +113,6 @@ jobs:
                 -- 'pipelines/*/pipeline.yaml' 'pipelines/*/README.md' \
               | xargs -r -I {} dirname {} | xargs -r -I {} basename {} \
               | sort -u | tr '\n' ',' | sed 's/,$//')
-            if [ -z "$CHANGED" ]; then
               # A version bump alone is not a content change. The write-back below rewrites
               # `version:` to match the catalogue, so the next detector reads the write-back's
               # own commit as a change to every pipeline and republishes them all — measured:
@@ -138,7 +137,6 @@ jobs:
                 echo "changed=" >> "$GITHUB_OUTPUT"
                 exit 0
                 fi
-              fi
           fi
           echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
           echo "Pipelines to publish: $CHANGED"
