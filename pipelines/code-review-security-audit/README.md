@@ -45,7 +45,7 @@ the merge. Pair it with `style-review` for a combined security + style check.
 ## Configuration
 
 | Input | Type | Default | Description |
-|-|||-|
+|-------|------|---------|-------------|
 | `code_diff` | string (1..50000 chars) | **required** | Git diff or unified patch text |
 | `language` | enum | `generic` | `typescript` / `javascript` / `python` / `rust` / `go` / `solidity` / `generic` |
 | `focus_area` | enum | `security` | `security` / `performance` / `style` / `all` |

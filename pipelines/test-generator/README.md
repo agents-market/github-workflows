@@ -18,7 +18,7 @@ Reads a diff, profiles the functions it changes, and generates test cases in the
 Three stages, each emitting `structured_json`:
 
 | Stage | Model | Output fields |
-|-|-||
+|-------|-------|---------------|
 | `profile_code_behavior` | MiniMax-M2.7 | functions, stats |
 | `generate_tests` | MiniMax-M3 | test_cases, summary |
 | `aggregate_to_test_file` | MiniMax-M2.7 | summary, recommendations, markdown_report, findings, generated_test_code |
@@ -35,7 +35,7 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 ## Configuration
 
 | Input | Type | Default | Description |
-|-|||-|
+|-------|------|---------|-------------|
 | `code_diff` | string | **required** | Git diff or unified patch text (1..50000 chars). Standard hunk header format `@@ -a,b +c,d @@`. |
 | `language` | typescript/javascript/python/rust/go | `typescript` | Primary language in the diff (drives framework detection and test syntax; default: typescript). |
 | `test_framework` | vitest/jest/pytest/auto | `auto` | Test framework to generate for (auto = detect from imports: vitest/jest for TS/JS, pytest for Python;… |
