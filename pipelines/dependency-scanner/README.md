@@ -1,6 +1,6 @@
 ---
 name: dependency-scanner
-version: 2.0.6
+version: 2.0.7
 description: |
   CVE IDENTIFIERS IN THIS PIPELINE ARE RECALLED FROM MODEL WEIGHTS, NOT LOOKED UP.
   Do not use it to decide whether to patch. See "Read this first" below.
