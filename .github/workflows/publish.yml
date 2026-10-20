@@ -267,4 +267,12 @@ jobs:
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit -q -m "chore(pipelines): record published versions [skip ci]"
+          # Rebase before pushing. A push landing between this job's checkout and
+          # its push made the push non-fast-forward and the step fail — measured,
+          # and the expensive way: the pipelines published, the run went red on
+          # "Note about fast-forwards", and the record of the published versions
+          # was lost. One fetch costs less than losing it. A rebase conflict fails
+          # the step rather than rewriting a shared branch.
+          git fetch -q origin "${{ github.ref_name }}"
+          git rebase "origin/${{ github.ref_name }}"
           git push -q origin HEAD:${{ github.ref_name }}
