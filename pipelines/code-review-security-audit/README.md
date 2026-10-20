@@ -1,6 +1,6 @@
 ---
 name: code-review-security-audit
-version: 2.0.9
+version: 2.0.10
 description: |
   AI security audit of code diffs — structured findings (severity, line, CWE,
   fix), aggregate risk score, and prioritized remediation recommendations.
@@ -45,7 +45,7 @@ the merge. Pair it with `style-review` for a combined security + style check.
 ## Configuration
 
 | Input | Type | Default | Description |
-|-------|------|---------|-------------|
+|-|||-|
 | `code_diff` | string (1..50000 chars) | **required** | Git diff or unified patch text |
 | `language` | enum | `generic` | `typescript` / `javascript` / `python` / `rust` / `go` / `solidity` / `generic` |
 | `focus_area` | enum | `security` | `security` / `performance` / `style` / `all` |

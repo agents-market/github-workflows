@@ -1,6 +1,6 @@
 ---
 name: documentation-generator
-version: 2.0.5
+version: 2.0.6
 description: |
   Reads a diff, profiles the code it touches, and generates README, JSDoc, or architecture documentation for the changed surface.
 license: MIT
@@ -18,7 +18,7 @@ Reads a diff, profiles the code it touches, and generates README, JSDoc, or arch
 Three stages, each emitting `structured_json`:
 
 | Stage | Model | Output fields |
-|-------|-------|---------------|
+|-|-||
 | `profile_code_structure` | MiniMax-M2.7 | units, stats |
 | `generate_documentation` | MiniMax-M3 | findings, summary |
 | `aggregate_to_markdown` | MiniMax-M2.7 | summary, recommendations, markdown_report, findings |
@@ -35,7 +35,7 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 ## Configuration
 
 | Input | Type | Default | Description |
-|-------|------|---------|-------------|
+|-|||-|
 | `code_diff` | string | **required** | Git diff or unified patch text (1..50000 chars). Standard hunk header format `@@ -a,b +c,d @@`. |
 | `language` | typescript/javascript/python/rust/go | `typescript` | Primary language in the diff (helps generator pick doc conventions: JSDoc vs docstrings vs rustdoc; default:… |
 | `doc_type` | readme/api/architecture/all | `all` | What documentation to generate (default: all — README + API reference + architecture notes). |

@@ -283,9 +283,14 @@ jobs:
             echo "Nothing to commit"
             exit 0
           fi
-          git -c user.name="github-actions[bot]" \
-              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -q -m "chore(pipelines): record published versions [skip ci]"
+          # Identity at config level, not on the commit: `git rebase` below
+          # replays commits and needs an author and a committer, and passing
+          # `-c user.name=…` to the commit does not give it one. With the identity
+          # only on `commit`, the rebase died on "fatal: empty ident name" and the
+          # step failed with the record unpublished.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "chore(pipelines): record published versions [skip ci]"
           # Rebase before pushing. A push landing between this job's checkout and
           # its push made the push non-fast-forward and the step fail — measured,
           # and the expensive way: the pipelines published, the run went red on

@@ -1,6 +1,6 @@
 ---
 name: dependency-scanner
-version: 2.0.5
+version: 2.0.6
 description: |
   CVE IDENTIFIERS IN THIS PIPELINE ARE RECALLED FROM MODEL WEIGHTS, NOT LOOKED UP.
   Do not use it to decide whether to patch. See "Read this first" below.
@@ -21,7 +21,7 @@ OSV with GHSA aliases resolved. (18 Oct, before the output templates were fixed:
 4 named, 2 applicable, 4 missed. The fix gained one and lost none.)
 
 | | |
-|---|---|
+|||
 | advisories OSV holds for this version | 6 |
 | CVE ids this pipeline named | 5 |
 | of those, applicable to this version | **3** |
@@ -61,7 +61,7 @@ for the fix: six advisories in, six advisories out.
 Three stages, each emitting `structured_json`:
 
 | Stage | Model | Output fields |
-|-------|-------|---------------|
+|-|-||
 | `parse_lockfile` | MiniMax-M2.7 | packages, stats |
 | `analyze_vulns` | MiniMax-M3 | packages, summary |
 | `aggregate_report` | MiniMax-M3 | summary, recommendations, markdown_report, packages |
@@ -78,7 +78,7 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 ## Configuration
 
 | Input | Type | Default | Description |
-|-------|------|---------|-------------|
+|-|||-|
 | `lockfile_content` | string | **required** | Contents of lockfile (package.json / requirements.txt / Cargo.toml). 1..50000 chars. Standard format expected. |
 | `ecosystem` | npm/python/rust | `npm` | Package ecosystem (npm = package-lock.json / package.json, python = requirements.txt / Pipfile.lock, rust =… |
 | `severity_threshold` | low/medium/high/critical | `medium` | Minimum severity to include in findings array (filters out noise; default: medium). |

@@ -1,6 +1,6 @@
 ---
 name: api-design-reviewer
-version: 2.0.6
+version: 2.0.7
 description: |
   Reads an API spec, profiles its endpoints, and reviews the design for consistency, versioning, error contracts, and pagination.
 license: MIT
@@ -18,7 +18,7 @@ Reads an API spec, profiles its endpoints, and reviews the design for consistenc
 Three stages, each emitting `structured_json`:
 
 | Stage | Model | Output fields |
-|-------|-------|---------------|
+|-|-||
 | `profile_api_design` | MiniMax-M2.7 | endpoints, stats |
 | `review_design` | MiniMax-M3 | findings, summary |
 | `aggregate_to_review` | MiniMax-M2.7 | summary, recommendations, markdown_report, findings |
@@ -35,7 +35,7 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 ## Configuration
 
 | Input | Type | Default | Description |
-|-------|------|---------|-------------|
+|-|||-|
 | `api_spec` | string | **required** | OpenAPI YAML/JSON spec, route-defining code, or GraphQL SDL text (1..50000 chars). |
 | `api_style` | rest/graphql/trpc/auto | `auto` | API style to review against (default: auto — detect from spec shape). |
 | `strictness` | lenient/strict | `strict` | How aggressively to flag borderline issues (default: strict). Lenient drops low-severity nits. |
