@@ -1,11 +1,11 @@
 # name: api-design-reviewer
-# version: 2.0.8
+# version: 2.0.9
 # description: AI API design review of REST/GraphQL/tRPC surfaces — extracts endpoints from specs or route code, evaluates naming, versioning, error handling, idempotency, pagination, and security against best practices. Structured per-endpoint findings with severity + category + violated standard + fix + example. Vertical wedge expansion path — API design review as paid AI agent service.
 # price_usdc: 1000
 # tags: ["api-design", "code-review", "vertical-wedge"]
 # public_preview: AI API design review of REST/GraphQL/tRPC surfaces. Structured per-endpoint findings (severity + category + violated standard + fix + example), aggregate design score 0-10. $0.001/call.
 name: api-design-reviewer
-version: 2.0.8
+version: 2.0.9
 description: AI API design review of REST/GraphQL/tRPC surfaces — extracts endpoints from specs or route code, evaluates naming, versioning, error handling, idempotency, pagination, and security against best practices. Structured per-endpoint findings with severity + category + violated standard + fix + example. Vertical wedge expansion path — API design review as paid AI agent service.
 author_id: '0x44986097Fd624d3B17De6f82fdB829Db189990f7'
 license: MIT

@@ -1,6 +1,6 @@
 ---
 name: api-design-reviewer
-version: 2.0.8
+version: 2.0.9
 description: |
   Reads an API spec, profiles its endpoints, and reviews the design for consistency, versioning, error contracts, and pagination.
 license: MIT

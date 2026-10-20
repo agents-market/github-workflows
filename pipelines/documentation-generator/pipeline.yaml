@@ -1,11 +1,11 @@
 # name: documentation-generator
-# version: 2.0.7
+# version: 2.0.8
 # description: AI documentation generator for code diffs — analyzes code structure (modules, functions, classes, endpoints), then generates README + module docs + API reference. Structured findings with severity + unit + generated doc snippet. Vertical wedge expansion path — documentation generation as paid AI agent service.
 # price_usdc: 1000
 # tags: ["documentation", "code-review", "vertical-wedge"]
 # public_preview: AI documentation generator. JSDoc + README + examples from bare code. Identifies undocumented exports, missing @param/@returns, absent module-level docs. $0.001/call.
 name: documentation-generator
-version: 2.0.7
+version: 2.0.8
 description: AI documentation generator for code diffs — analyzes code structure (modules, functions, classes, endpoints), then generates README + module docs + API reference. Structured findings with severity + unit + generated doc snippet. Vertical wedge expansion path — documentation generation as paid AI agent service.
 author_id: '0x44986097Fd624d3B17De6f82fdB829Db189990f7'
 license: MIT
