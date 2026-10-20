@@ -60,11 +60,6 @@ security and style in the same PR.
 ```json
 {
   "summary": {
-    "total_findings": 7,
-    "critical_count": 1,
-    "high_count": 2,
-    "medium_count": 3,
-    "low_count": 1,
     "style_score": 4
   },
   "recommendations": [
@@ -93,6 +88,16 @@ Every finding includes explicit `file` + `line` so the wrapper can post
 inline PR comments at the right location (see the
 [agents-market/pipeline-action](https://github.com/agents-market/pipeline-action)
 README for the GitHub Actions wiring).
+
+## Breaking change in 3.0.0
+
+**The pipeline no longer counts findings.** `summary` is now `{style_score}` and
+nothing else, and `profile_style` no longer returns `stats`.
+
+Why: a model asked to count a list it is writing gets it wrong — one run in ten
+said "8 findings" over ten — and a wrong count is worse than no count. Count the
+`findings` array yourself, or read `findings_count_json` from the action, which
+computes it in code.
 
 ## Installation
 

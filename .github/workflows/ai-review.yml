@@ -250,6 +250,39 @@ jobs:
           # no trace where a reader looks first.
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # The counts in the report are counted here, by code, from the same array
+      # that produces the inline comments. Never by the model — a model that
+      # counts a list it is writing gets it wrong, and we measured it: one run in
+      # ten said "8 findings" over ten.
+      #
+      # `findings_skipped_no_metadata` is the other half. The action drops a
+      # finding that has a line but no file, because the GitHub comments API
+      # cannot resolve a path that is not one. It counted those drops and we
+      # ignored the count, so a pipeline that returned five findings and lost
+      # four of them reported "0 findings" and looked clean. Now the drop is
+      # reported, loudly, because a finding nobody can see is not a finding.
+      - name: Count findings (jq)
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          FINDINGS: ${{ steps.review_retry.outputs.findings_json || steps.review.outputs.findings_json }}
+          SKIPPED: ${{ steps.review_retry.outputs.findings_skipped_no_metadata || steps.review.outputs.findings_skipped_no_metadata }}
+        run: |
+          set -euo pipefail
+          findings="${FINDINGS:-[]}"
+          counts=$(printf '%s' "$findings" | jq -r '
+            reduce (.[] | .severity) as $s
+              ({"critical":0,"high":0,"medium":0,"low":0};
+               .[$s] = ((.[$s] // 0) + 1))
+            | to_entries | map("\(.key) \(.value)") | join(" · ")
+          ')
+          total=$(printf '%s' "$findings" | jq 'length')
+          {
+            echo "breakdown=$counts"
+            echo "total=$total"
+            echo "skipped=${SKIPPED:-0}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Upsert summary comment
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
@@ -259,7 +292,9 @@ jobs:
           RESULT: ${{steps.review_retry.outputs.result_json || steps.review.outputs.result_json}}
           COST: ${{steps.review_retry.outputs.total_cost_usdc || steps.review.outputs.total_cost_usdc}}
           DURATION: ${{steps.review_retry.outputs.total_ms || steps.review.outputs.total_ms}}
-          COUNTS: ${{steps.review_retry.outputs.findings_count_json || steps.review.outputs.findings_count_json}}
+          COUNTS: ${{ steps.count.outputs.breakdown || 'n/a' }}
+          TOTAL: ${{ steps.count.outputs.total || '0' }}
+          SKIPPED: ${{ steps.count.outputs.skipped || '0' }}
           RUN_STATUS: ${{steps.review_retry.outputs.status || steps.review.outputs.status}}
         with:
           script: |
@@ -277,8 +312,14 @@ jobs:
               } else {
                 b += `| Metric | Value |\n|---|---:|\n`;
                 b += `| Duration | ${(Number(process.env.DURATION || 0) / 1000).toFixed(1)}s |\n`;
-                b += `| Findings | ${process.env.COUNTS || 'n/a'} |\n`;
+                b += `| Findings | ${process.env.TOTAL || '0'} (${process.env.COUNTS || 'n/a'}) |\n`;
                 b += `| Market-equivalent cost | ${process.env.COST || '0'} USDC |\n\n`;
+                const skipped = Number(process.env.SKIPPED || 0);
+                if (skipped > 0) {
+                  b += `⚠️ **${skipped} finding(s) were dropped** for missing file metadata. `;
+                  b += `They are not in the count above and not in the inline comments. `;
+                  b += `This is a defect in the pipeline, not a clean result.\n\n`;
+                }
                 b += `> Cost is a market-rate estimate of the tokens consumed. This pipeline `;
                 b += `ran locally in the Actions runner — **nothing was charged**.\n\n`;
                 let md = '';

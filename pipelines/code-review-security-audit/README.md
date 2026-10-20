@@ -56,11 +56,6 @@ the merge. Pair it with `style-review` for a combined security + style check.
 ```json
 {
   "summary": {
-    "total_findings": 4,
-    "critical_count": 1,
-    "high_count": 1,
-    "medium_count": 2,
-    "low_count": 0,
     "overall_risk_score": 7.5
   },
   "recommendations": [
@@ -85,6 +80,22 @@ the merge. Pair it with `style-review` for a combined security + style check.
 
 Every finding includes `file` + `line` + `cwe_id` (when applicable) so the
 wrapper can post inline PR comments at the right location with CWE references.
+
+## Breaking change in 3.0.0
+
+**The pipeline no longer counts findings.** `summary` is now
+`{overall_risk_score}` and nothing else. `pattern_scan` returns `candidates`
+instead of `findings`, and `deep_review` no longer returns `new_findings_count`.
+
+Why: a model asked to count a list it is writing gets it wrong — one run in ten
+said "8 findings" over ten — and a wrong count is worse than no count. Count the
+`findings` array yourself, or read `findings_count_json` from the action, which
+computes it in code.
+
+**Every finding now carries the file it is in.** Before 3.0.0 the stages did not
+ask for it, and the consumer dropped every finding that had a line but no file —
+silently, and without counting it. On this repository that meant the security
+audit posted no inline comments at all, ever.
 
 ## Installation
 
