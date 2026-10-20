@@ -1,5 +1,5 @@
 # name: code-review-security-audit
-# version: 2.0.6
+# version: 2.0.7
 # description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate risk score, and prioritized remediation recommendations. Vertical wedge: code review as paid AI agent service at $0.001/call.
 # price_usdc: 1000
 # tags: ["security", "code-review", "vertical-wedge"]
@@ -11,7 +11,7 @@
 # Input validation: code_diff (string, required, 1..50000 chars); language (enum ts/js/py/rs/go/solidity/generic, default generic); focus_area (enum security|performance|style|all, default security); severity_threshold (enum low|medium|high|critical, default medium).
 # Output schema: findings[{severity,line,description,fix_suggestion,cwe_id,confidence}], summary{total_findings,critical_count,high_count,medium_count,low_count,overall_risk_score 0-10}, recommendations[str] (≤5, prioritized).
 name: code-review-security-audit
-version: 2.0.6
+version: 2.0.7
 description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate summary with risk score, and prioritized remediation recommendations.
 author_id: agentsmarket-team
 license: MIT

@@ -1,11 +1,11 @@
 # name: dependency-scanner
-# version: 2.0.2
+# version: 2.0.3
 # description: AI dependency vulnerability scanner — parses lockfile, identifies known CVEs per package, emits structured findings (severity + CVE + fix version + remediation). Vertical wedge expansion path — dependency scanning as paid AI agent service.
 # price_usdc: 1000
 # tags: ["dependency-scan", "code-review", "vertical-wedge"]
 # public_preview: AI dependency vulnerability scan. Structured findings (severity + CVE + fix version), aggregate risk score 0-10, prioritized remediation. $0.001/call.
 name: dependency-scanner
-version: 2.0.2
+version: 2.0.3
 description: AI dependency vulnerability scanner — parses lockfile, identifies known CVEs per package, emits structured findings (severity + CVE + fix version + remediation). Vertical wedge expansion path — dependency scanning as paid AI agent service.
 author_id: '0x44986097Fd624d3B17De6f82fdB829Db189990f7'
 license: MIT
