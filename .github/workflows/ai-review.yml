@@ -43,6 +43,14 @@ on:
         required: false
         type: string
         default: 'false'
+        cli_version:
+          description: >-
+            'Install this CLI version instead of the newest. Unset installs the
+            newest, which is the point of this run: a broken release turns the
+            run red instead of reaching the pipelines unnoticed. Set it only to
+            keep testing the pipelines while a release is broken.'
+          required: false
+          type: string
     secrets:
       MINIMAX_API_KEY:
         required: true
@@ -55,6 +63,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      cli_version:
+        description: 'Install this CLI version instead of the newest. Unset installs the newest.'
+        required: false
+        type: string
 
 concurrency:
   group: ai-review-${{ github.event.pull_request.number || github.ref }}
@@ -113,7 +126,7 @@ jobs:
         # smoke.yml keeps proving the floor still works — this is the other
         # half: if a new release breaks the run, our own PR review is what
         # says so, which is the entire reason to dogfood on latest.
-        run: npm install -g @agentsmarket/cli@latest
+        run: npm install -g @agentsmarket/cli@${{ inputs.cli_version || 'latest' }}
 
       - name: Mint throwaway agent identity
         run: |
