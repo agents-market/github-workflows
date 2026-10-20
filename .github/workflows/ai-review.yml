@@ -275,6 +275,7 @@ jobs:
       # four of them reported "0 findings" and looked clean. Now the drop is
       # reported, loudly, because a finding nobody can see is not a finding.
       - name: Count findings (jq)
+        id: count
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
         env:

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pipelines": [
+    {
+      "slug": "style-review",
+      "version": "3.1.0",
+      "sha256": "52bf4cc3306c588cd33fc8a6998b0d15264d88a538bdc35d0f0b7af432d9c66f",
+      "spec_hash": "0019e49e1ca83ef9d45a28b1073062aa65135d97d0387ecb717ed321ec6a4582",
+      "installed_at": "2026-10-20T21:10:17.947Z"
+    }
+  ]
+}
