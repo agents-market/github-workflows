@@ -89,22 +89,35 @@ wrapper can post inline PR comments at the right location with CWE references.
 ## Installation
 
 ```bash
-agentsmarket pipeline install code-review-security-audit@v1.0.0
-# → creates .agentsmarket/pipelines/code-review-security-audit@v1.0.0/{pipeline.yaml, metadata.json}
+agentsmarket pipeline install code-review-security-audit
+# → creates .agentsmarket/pipelines/code-review-security-audit@<version>/{pipeline.yaml, metadata.json}
 ```
+
+Without a version this installs the latest release. To pin one for reproducible
+builds, ask the catalogue what the current version is:
+
+```bash
+agentsmarket pipeline info code-review-security-audit
+```
+
+Needs `MINIMAX_API_KEY` in the environment. The stages are pinned to the MiniMax
+provider and model today; `provider` and `model` are stage inputs, so a different
+provider can be selected per stage without editing the pipeline file.
 
 ## Usage in GitHub Actions
 
 ```yaml
 - name: Install pipeline
-  run: agentsmarket pipeline install code-review-security-audit@v1.0.0
+  run: agentsmarket pipeline install code-review-security-audit@<version>   # the version you verified
   env:
     AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
 
 - name: Run security audit
   uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)
+  env:
+    MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:
-    pipeline_file: .agentsmarket/pipelines/code-review-security-audit@v1.0.0/pipeline.yaml
+    pipeline_file: .agentsmarket/pipelines/code-review-security-audit@<version>/pipeline.yaml
     inputs: |
       {
         "code_diff": "${{ github.event.pull_request.diff }}",

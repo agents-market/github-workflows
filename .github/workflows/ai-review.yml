@@ -1,21 +1,18 @@
 # Reference consumer workflow — AI code review via agents-market pipelines.
 # Doubles as this repo's dogfood run, so recommended and actual wiring cannot
-# drift. Five decisions, each fixing a defect seen on web3eco/blockchain PR #83;
-# a naive wiring gets all five wrong. Traps and pinning rules: CONTRIBUTING.md.
+# drift. The five decisions a naive wiring gets wrong, and why:
 #
-# 1. concurrency + cancel-in-progress — a naive trigger re-runs on every
-#    `synchronize`, so four pushes = four duplicate comment sets. Grouping by PR
-#    number makes a new commit supersede the in-flight run. cancel-in-progress
-#    is pull_request-only: a cancelled required check blocks its own merge.
-# 2. One sticky comment per pipeline, upserted by HTML marker, not per run.
-# 3. Inline threads are synced, not appended — an already-reported finding is
-#    not re-posted and a stale anchor is auto-resolved, so resolve work is bounded.
-# 4. Ephemeral agent identity, no AGENTSMARKET_PRIVATE_KEY. `pipeline install`
-#    needs an EIP-191 signature but no registration, balance, or funded account,
-#    and `init` mints a throwaway key before any network call. Only
-#    MINIMAX_API_KEY is needed — the private key is for remote executor_url runs.
-# 5. Cost is labelled notional — total_cost_usdc is a market-rate estimate and
-#    local mode charges nothing, so bare, it reads as an invoice.
+# 1. concurrency + cancel-in-progress, so four pushes do not leave four comment
+#    sets. cancel-in-progress is pull_request-only: a cancelled required check
+#    blocks its own merge.
+# 2. One sticky comment per pipeline, upserted by HTML marker.
+# 3. Inline threads are synced, not appended, so resolve work stays bounded.
+# 4. Ephemeral agent identity, no AGENTSMARKET_PRIVATE_KEY. `init` mints a
+#    throwaway key before any network call; only MINIMAX_API_KEY is needed.
+# 5. Cost is labelled notional — local mode charges nothing, so bare, it reads
+#    as an invoice.
+#
+# Traps and pinning rules: CONTRIBUTING.md.
 name: AI Review
 
 on:
@@ -51,15 +48,10 @@ on:
         required: true
   pull_request:
     branches: [main]
-  # This workflow reviews every pull request in the repository, and until now
-  # nothing ever ran it against main. A push to main produced a run with zero jobs,
-  # so a broken ai-review.yml sat there unnoticed — three times in two days. The
-  # comment steps are already gated on `github.event_name == 'pull_request'` and the
-  # diff step falls back to HEAD~1, so a push needs no new machinery: it reviews the
-  # last commit, posts nothing, and fails loudly if the wiring is broken.
-  #
-  # It costs two pipeline runs per push, which is the price of the dogfooding being
-  # real instead of aspirational.
+  # Also run on pushes to main: a push used to produce a run with zero jobs, so a
+  # broken ai-review.yml sat unnoticed three times in two days. A push reviews the
+  # last commit, posts nothing, and fails loudly if the wiring is broken. Costs two
+  # pipeline runs per push.
   push:
     branches: [main]
   workflow_dispatch:
@@ -78,19 +70,15 @@ jobs:
     name: ${{ matrix.pipeline.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Compared against 'true', not 'false'. On pull_request and workflow_dispatch
-    # the inputs context is empty, so `inputs.advisory` is '' — and `'' != 'false'`
-    # made the dogfood run advisory, i.e. silently green. An unset input must
-    # mean strict; only an explicit 'true' may downgrade a failure to a warning.
+    # Compared against 'true', not 'false'. On pull_request and workflow_dispatch the
+    # inputs context is empty, so `inputs.advisory` is '' — and `'' != 'false'` made
+    # the dogfood run advisory, i.e. silently green. An unset input must mean strict.
     #
-    # The one exception is a push to main, where the commit is already merged and
-    # nothing can be gated on it. Keeping it strict there only produces a red check
-    # nobody can act on — measured: the same diff passed three times in a row
-    # locally and failed once in CI, so the pipeline's output-format stage is
-    # intermittently unreliable, and a flaky model should not repaint history.
-    # Wiring failures still fail the run: they happen in the install and diff
-    # steps, which carry no such exemption, and only the pipeline step itself is
-    # downgraded below.
+    # The exception is a push to main, where the commit is already merged and nothing
+    # can be gated on it: a strict check there only produces a red nobody can act on,
+    # and the model is intermittently unreliable, so a flaky model must not repaint
+    # history. Wiring failures still fail the run — they happen in the install and
+    # diff steps, which carry no exemption.
     continue-on-error: ${{ inputs.advisory == 'true' || github.event_name == 'push' }}
     strategy:
       fail-fast: false
@@ -198,21 +186,17 @@ jobs:
         # retry below carries no such exemption, so two consecutive failures still
         # fail the job. That is the whole policy: absorb one, fail on two.
         continue-on-error: true
-        # Two ways to make this file fail with zero jobs and no useful message, both
-        # hit while building it:
-        #   - the `env` context is not available in a `uses:` step's `with:`.
-        #     A path has to travel as a step output instead.
-        #   - a top-level `env:` with nothing under it parses as `env: null`,
-        #     which is not a mapping and is rejected outright. Deleting a key
-        #     from `env:` leaves the key behind.
-        # A moving ref, on purpose, and not for laziness. We publish this action,
-        # so a SHA pin means this repository reviews itself with whatever shipped
-        # before the last thing — which is how the pin went three weeks stale
-        # before anyone noticed. A SHA here is also not maintainable by a bot:
-        # GITHUB_TOKEN cannot push a commit that touches .github/workflows/, so
-        # keeping a pinned SHA fresh needs a human or a PAT, and nobody came.
-        # Consumers still get a SHA, in CONTRIBUTING.md, where reproducibility is
-        # what they actually need.
+        # Two traps make this file fail with zero jobs and no useful message:
+        #   - the `env` context is not available in a `uses:` step's `with:`, so a
+        #     path has to travel as a step output
+        #   - a top-level `env:` with nothing under it parses as `env: null` and is
+        #     rejected outright; deleting a key from `env:` leaves the key behind
+        #
+        # A moving ref, on purpose. We publish this action, so a SHA pin means this
+        # repository reviews itself with whatever shipped before the last thing —
+        # which is how the pin went three weeks stale. A SHA here is also not
+        # maintainable by a bot: GITHUB_TOKEN cannot push a commit that touches
+        # .github/workflows/. Consumers still get a SHA, in CONTRIBUTING.md.
         uses: agents-market/pipeline-action@main
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
@@ -222,26 +206,19 @@ jobs:
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
           pipeline_file: ${{ steps.install.outputs.path }}
 
-      # One retry, because the failure is stochastic and not our bug to fix.
-      # Measured on this pipeline, same diff, 20 runs: 3 failed. The cause is the
-      # model's JSON, not the spec — `Bad escaped character in JSON at position
-      # NNNN` inside a long free-text field — and nothing in a pipeline spec can
-      # prevent it. `model_params.temperature` would be the lever and the runtime
-      # never reads it; `output_retry: loop` is already the ceiling of three
-      # attempts. So the retry lives here, where it is honest: one extra run costs
-      # ~0.01 USDC and takes about a minute.
+      # One retry: the failure is stochastic and not ours to fix. Measured on this
+      # pipeline, same diff, 20 runs: 3 failed, all on the model's JSON, never the
+      # spec. `model_params.temperature` would be the lever and the runtime does not
+      # read it; `output_retry: loop` is already the ceiling of three attempts. One
+      # extra run costs ~0.01 USDC and about a minute.
       #
       # Downstream steps read `steps.review_retry.outputs.* || steps.review.outputs.*`,
       # so whichever attempt produced output is the one that gets posted.
       - name: Run pipeline (retry)
         id: review_retry
-        # `always()` is load-bearing. Without it the retry is dead code exactly when
-        # it is needed: on a pull request the job is strict, the first attempt
-        # fails the step, and GitHub skips every later step that has not opted out
-        # of the implicit `success()`. The probe PR showed `Run pipeline (retry):
-        # skipped` immediately after `Run pipeline: failure`. On push the job's
-        # continue-on-error hides this, which is why a push-only check would not
-        # have found it.
+        # `always()` is load-bearing: on a pull request the job is strict, so a
+        # failed first attempt makes GitHub skip every later step that has not
+        # opted out of the implicit `success()` — including this one.
         if: always() && steps.review.outcome == 'failure'
         uses: agents-market/pipeline-action@main
         env:
@@ -252,15 +229,12 @@ jobs:
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
           pipeline_file: ${{ steps.install.outputs.path }}
 
-      # The exemption above is only safe if it is not silent. On a push there is
-      # no PR to comment on, so the record goes in the job summary: a run that did
-      # not complete says so, in the place a reader looks first, instead of
-      # reading green.
+      # The exemption above is only safe if it is not silent. On a push there is no
+      # PR to comment on, so the record goes in the job summary — a run that did not
+      # complete says so, instead of reading green.
       - name: Record that the review did not complete
-        # `always()` for the same reason as the retry above, and it bit exactly once
-        # more: this step exists to record a failed review, so it runs precisely when the
-        # job is failing, which is when GitHub skips steps that do not opt out of the
-        # implicit `success()`. Verified by forcing both attempts to fail on a push.
+        # `always()` for the same reason as the retry above: this step exists to record
+        # a failed review, so it runs exactly when the job is failing.
         if: always() && github.event_name == 'push' && steps.review.outcome == 'failure' && steps.review_retry.outcome != 'success'
         env:
           SLUG: ${{ matrix.pipeline.slug }}
@@ -272,10 +246,8 @@ jobs:
             echo "this commit — it is already merged, and the model is intermittently"
             echo "unreliable on output format — but the review for \`$SLUG\` is"
             echo "**missing**, not clean."
-          # `tee`, so the message is also in the run log. Writing only to the
-          # summary file means a failed review leaves no trace in the log at all,
-          # and "it is not in the log" is exactly the wrong conclusion to reach
-          # when you are trying to find out why.
+          # `tee`, so the message is in the run log too. A summary-only write leaves
+          # no trace where a reader looks first.
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upsert summary comment

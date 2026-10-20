@@ -97,22 +97,35 @@ README for the GitHub Actions wiring).
 ## Installation
 
 ```bash
-agentsmarket pipeline install style-review@v1.0.0
-# → creates .agentsmarket/pipelines/style-review@v1.0.0/{pipeline.yaml, README.md, metadata.json}
+agentsmarket pipeline install style-review
+# → creates .agentsmarket/pipelines/style-review@<version>/{pipeline.yaml, README.md, metadata.json}
 ```
+
+Without a version this installs the latest release. To pin one for reproducible
+builds, ask the catalogue what the current version is:
+
+```bash
+agentsmarket pipeline info style-review
+```
+
+Needs `MINIMAX_API_KEY` in the environment. The stages are pinned to the MiniMax
+provider and model today; `provider` and `model` are stage inputs and can be made
+per-stage without changing the pipeline file.
 
 ## Usage in GitHub Actions
 
 ```yaml
 - name: Install pipeline
-  run: agentsmarket pipeline install style-review@v1.0.0
+  run: agentsmarket pipeline install style-review@<version>   # the version you verified
   env:
     AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
 
 - name: Run style review
   uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)
+  env:
+    MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:
-    pipeline_file: .agentsmarket/pipelines/style-review@v1.0.0/pipeline.yaml
+    pipeline_file: .agentsmarket/pipelines/style-review@<version>/pipeline.yaml
     inputs: |
       {
         "code_diff": "${{ github.event.pull_request.diff }}",
