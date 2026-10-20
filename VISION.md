@@ -217,12 +217,12 @@ the first honest look; nobody had asked it before.
 
 | Pipeline | Stage | Verdict | Why |
 |---|---|---|---|
-| `code-review-security-audit` | `pattern_scan` | **LLM, but not a scanner** | Named like a scanner, is not one. It asks the model to judge injection, secrets, crypto, access control and then invent a description and a fix for each. That is judgement. What it also does wrong: `lines_scanned` / `hunks_scanned` are counted **by the model**. A `grep -c '^@@'` is exact; a model guessing is not, and differs run to run. |
+| `code-review-security-audit` | `pattern_scan` | **LLM, but not a scanner** | Named like a scanner, is not one. It asks the model to judge injection, secrets, crypto, access control and then invent a description and a fix for each. That is judgement. It used to also ask the model for `lines_scanned` / `hunks_scanned`; a `grep -c '^@@'` is exact and a model guessing is not — both fields are gone since 3.0.0. |
 | | `deep_review` | **LLM — correct** | Business-logic flaws, IDOR, race conditions. Genuinely judgement. |
-| | `aggregate` | **7 of 8 fields are software** | See below. |
+| | `aggregate` | **counters are gone (3.0.0)** | It used to compute five counters and a report. The counters are software's job and are now counted by the caller; the stage is left with the risk score and the narrative. See below. |
 | `style-review` | `profile_style` | **borderline** | Detects naming/type/literal *patterns*. Half of it is AST or regex work; half is judging whether a pattern is a problem. |
 | | `analyze_style` | **LLM — correct** | Judgement, with a fix suggestion. |
-| | `aggregate_style` | **7 of 8 fields are software** | Same shape as `aggregate`. |
+| | `aggregate_style` | **counters are gone (3.0.0)** | Same shape as `aggregate`. |
 | `dependency-scanner` | `parse_lockfile` | **already script** | Correct — and it is the cheapest of the three. |
 | | `analyze_vulns` | **should NOT be a model** | See below. |
 | | `aggregate_report` | **software** | Counts and a table. |
@@ -237,6 +237,11 @@ the first honest look; nobody had asked it before.
 | | `aggregate_to_review` | **software** | Counts. |
 
 ### `aggregate` in detail
+
+> **This section describes the state before 3.0.0.** The counts it lists are gone
+> from the contract: the model no longer produces them, and the caller counts
+> the findings array in code. The reasoning below is why that happened, and it
+> is kept because the next stage someone adds will make the same mistake.
 
 This is the clearest case, and it is the one you asked about.
 
