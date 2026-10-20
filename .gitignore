@@ -21,3 +21,6 @@ build/
 # tmp
 tmp/
 .cache/
+
+# Installed pipeline bundles: a build artifact of `pipeline install`, never source.
+.agentsmarket/
