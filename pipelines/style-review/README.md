@@ -1,6 +1,6 @@
 ---
 name: style-review
-version: 3.0.0
+version: 3.1.0
 description: |
   AI-powered code style review for diffs. Identifies naming inconsistencies,
   missing types, unused exports, magic numbers, and codebase-pattern violations.
@@ -9,7 +9,8 @@ description: |
   agent service at $0.001/call.
 license: MIT
 author: agentsmarket-team
-price_usdc: 1000
+price_usdc: 0
+call_price_usdc: 1000
 tags: [style, code-review, vertical-wedge]
 public_preview: AI code style review of diffs. Structured findings (severity + category + fix + impact), aggregate style score 0-10, prioritized refactors. $0.001/call.
 ---
