@@ -34,6 +34,21 @@ on:
         options: [patch, minor, major]
         default: 'patch'
 
+# One publish at a time per branch. A push-triggered run and a manual dispatch of
+# the same commit both reach the write-back, and they competed for it: one
+# committed and pushed, the other failed on a non-fast-forward, leaving the record
+# of the published versions unpublished while the catalogue had moved on. Measured
+# twice on 20 October, on consecutive runs.
+#
+# cancel-in-progress is false on purpose: publishing is idempotent, so a manual
+# re-run queued behind a push-triggered run still verifies the state instead of
+# being cancelled before it checks anything. Cancelling would also be safe, but
+# it would make "the run I watched publish nothing" indistinguishable from "the
+# run I watched was cancelled".
+concurrency:
+  group: publish-pipeline-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: read
