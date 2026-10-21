@@ -137,7 +137,7 @@ consumer file explains itself by being obvious.
 One command. It downloads the pipeline and runs it:
 
 ```
-npx @agentsmarket/cli pipeline call style-review@2.0.4 --local
+npx @agentsmarket/cli pipeline call style-review@3.1.0 --local
 ```
 
 No `install` first. No lockfile to understand. No `--file`. No directory to
@@ -172,8 +172,8 @@ a clean directory with an empty npm cache, on 2026-10-18.
 
 | Ideal | Actual | Gap |
 |---|---|---|
-| One command downloads and runs | `npx @agentsmarket/cli pipeline call style-review@2.0.4 --local --inputs '{...}'` installs and runs on CLI 0.12.4 + runtime 0.5.2, returning real findings for a real diff | **closed** |
-| A first-ever command works | Both `style-review@2.0.4` and `style-review@v2.0.4` resolve; the v-prefix is accepted | **closed** |
+| One command downloads and runs | `npx @agentsmarket/cli pipeline call style-review@3.1.0 --local --inputs '{...}'` installs and runs on CLI 0.12.4 + runtime 0.5.2, returning real findings for a real diff | **closed** |
+| A first-ever command works | Both `style-review@3.1.0` and `style-review@v3.1.0` resolve; the v-prefix is accepted | **closed** |
 | The CLI a consumer gets is installable | 0.12.3 shipped `workspace:*` verbatim and could not be installed at all (`EUNSUPPORTEDPROTOCOL`). Fixed in 0.12.4, which `publish.sh` now prevents | closed; 0.12.3 is dead weight for 72h |
 | Every stage does the minimum work | At least 6 of 18 stages are software paying for an LLM call; `analyze_vulns` asks a model to recall CVEs | **open — see the audit below** |
 | Paid server-side invocation works | `pipeline call` without `--local` fails at payment: `INVALID_LINK: shared_link does not match derivation`, on 0.12.2 and 0.12.4 alike | **open — pre-existing, server-side** |
@@ -188,6 +188,7 @@ cache, one command installed CLI 0.12.4, pulled runtime 0.5.2, downloaded
 `style-review@2.0.4` and returned findings for a real diff. It is not a mock
 and not a claim about a mock.
 
+
 **2. The providers are finally registered.** CLI 0.12.4 carries the registry
 fix: a spec declaring `provider: openai` or `anthropic` used to fail under the
 CLI while working under the GitHub Action, because only the Action registered
@@ -199,6 +200,19 @@ on its way green — once because the published CLI could not do it, once becaus
 the runner had no identity, once because `code_diff` is required — and each
 failure was a real defect rather than a flake.
 
+**4. The payment gate changed the answer, and the docs were lying.** On 2026-10-20
+the marketplace started charging for a pipeline download: `price_usdc` is the
+download price now, and a pipeline with a price refuses an identity that holds no
+funds — 402, EIP-2612 permit, and a `shared_link` the CLI does not understand.
+The quick start above pointed at `style-review@2.0.4`, a paid version, so the
+promise "one command, no install" was false for anyone without a wallet.
+The two public pipelines are now free to download (`price_usdc: 0`), the docs
+point at them, and the smoke test proves both halves: the free pipeline runs
+with an identity that holds nothing, and the paid one refuses it out loud.
+What is still missing is the message the CLI prints: it says "Server error 402
+while installing pipeline" and then "Pipeline file not found", which reads like a
+broken server rather than a price. That is a change in the CLI, not here.
+
 ### Still open
 
 | Item | State |
@@ -207,7 +221,7 @@ failure was a real defect rather than a flake.
 | Six stages should not call a model | The audit below. `analyze_vulns` is the urgent one: it asks a model to recall CVE identifiers it has no database for. |
 | `shell:` stages only work with `--local` | The deterministic replacement for those six stages needs a primitive that works on every consumption path, not a flag. `http:` for the CVE lookup. |
 | `maxTokens` needs CLI ≥ 0.12.2 | Published specs depend on it. Anything older ignores the field silently and falls back to 4096. The smoke test pins the floor, now at 0.12.4. |
-| Four pipelines sit at `2.0.1` | `style-review` and `code-review-security-audit` are at 2.0.4. The other four were republished in place, so their fixes live under the version they already had. |
+| Four pipelines sit at `2.0.1` | `style-review` and `code-review-security-audit` are at 3.1.0 and 3.2.0. The other four were republished in place, so their fixes live under the version they already had. |
 | CI in `agents-market/main` cannot run | GitHub Actions reports: *recent account payments have failed or your spending limit needs to be increased*. Every job fails to start in ~2s. Local runs are green (958 CLI + 1421 runtime + 1936 server), but no CI signal exists until billing is fixed. |
 
 ### Law 3 applied to our own pipelines — audit

@@ -8,12 +8,16 @@ else. Each example is copy-pasteable as-is — no editing, no choices to make.
 Nothing to install first. The pipeline downloads and runs:
 
 ```bash
-npx @agentsmarket/cli pipeline call style-review@2.0.4 --local \
+npx @agentsmarket/cli pipeline call style-review@3.1.0 --local \
   --inputs '{"code_diff":"<paste a git diff>"}'
 ```
 
-Both `style-review@2.0.4` and `style-review@v2.0.4` work — releases are tagged
+Both `style-review@3.1.0` and `style-review@v3.1.0` work — releases are tagged
 with a `v`, so people type it, and it is accepted.
+
+The public pipelines are free to download, so the command above works with any
+identity, including one that holds no money. A pipeline *with* a price refuses
+an empty wallet with a `402` — that is a price, not a broken server.
 
 Prefer to see it without spending anything? Add `--mock` and the pipeline runs
 with a stub model, no API key needed.
@@ -39,7 +43,7 @@ jobs:
   review:
     uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<full-commit-sha>
     with:
-      pipeline_version: '2.0.4'
+      pipeline_version: '3.1.0'
     secrets:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
@@ -64,13 +68,13 @@ to set them:
 ```yaml
     uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<sha>
     with:
-      pipeline_version: '2.0.4'
+      pipeline_version: '3.1.0'
       advisory: 'true'
 ```
 
 | Input | Default | What it changes |
 |---|---|---|
-| `pipeline_version` | `2.0.4` | Which published version to install |
+| `pipeline_version` | `3.1.0` | Which published version to install |
 | `focus_area` | per pipeline | Security pipeline: `security`. Style pipeline: `all` |
 | `severity` | per pipeline | Minimum severity reported |
 | `advisory` | `'false'` | `'true'` reports findings without failing the job |

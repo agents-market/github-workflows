@@ -26,6 +26,6 @@ jobs:
       # Pin it. The workflow defaults to whatever is current, which is right for
       # the repository that owns the pipelines and wrong for yours: a PR check
       # that moves under you is not a check.
-      pipeline_version: '2.0.4'
+      pipeline_version: '3.1.0'
     secrets:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}

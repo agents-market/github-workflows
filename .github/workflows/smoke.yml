@@ -4,6 +4,16 @@
 # It deliberately installs nothing: `pipeline call <slug>@<version> --local`
 # downloads and runs in one command, which is the whole point of the shape
 # VISION.md asks for. If this ever fails, the promise in the README is a lie.
+#
+# Two kinds of pipeline, two different answers, and the test says which is
+# which instead of pretending:
+#
+#   * A free pipeline (price_usdc: 0 — ours, the public ones) installs and
+#     runs with a throwaway identity that holds no funds. This is the promise
+#     on the website, so it is the promise the test proves.
+#   * A paid pipeline costs money to download, and the identity has to hold
+#     money. The test asserts that the marketplace says so clearly, because a
+#     bare "402" in a consumer's face is not a promise, it is an obstacle.
 name: Consumer smoke test
 
 on:
@@ -18,6 +28,19 @@ permissions:
 # guard on ai-review.yml read it, so the two can never disagree about it.
 env:
   CLI_FLOOR: '0.12.4'
+
+  # The free public pipeline this repository publishes, and the version the
+  # test pins. `pipeline info` in the job below refuses to guess: a version
+  # that is not published fails the test loudly, instead of quietly installing
+  # whatever the catalogue happens to serve.
+  FREE_PIPELINE: 'code-review-security-audit'
+  FREE_VERSION: '3.2.0'
+
+  # A paid version of the same pipeline. It stays priced at 1000 USDC on
+  # purpose — it is what proves the paid path is real and what the consumer
+  # is told when they hit it.
+  PAID_PIPELINE: 'style-review'
+  PAID_VERSION: '2.0.4'
 
 jobs:
   smoke:
@@ -99,12 +122,38 @@ jobs:
           agentsmarket init
           chmod 600 ~/.config/agentsmarket/agent.key
 
-      - name: One command, no install step
+      # The free pipeline is the promise the website makes: one command, no
+      # install, no money. The identity here was minted seconds ago and holds
+      # nothing, so if this passes, "public and free" is literally true.
+      - name: One command, no install step (free pipeline, unfunded identity)
         run: |
-          agentsmarket pipeline call style-review@2.0.4 --local --mock \
+          agentsmarket pipeline call "$FREE_PIPELINE@$FREE_VERSION" --local --mock \
             --inputs '{"code_diff":"diff --git a/a.ts b/a.ts\n+const x = 1;"}'
 
       - name: The same with the v-prefixed version
         run: |
-          agentsmarket pipeline call code-review-security-audit@v2.0.4 --local --mock \
+          agentsmarket pipeline call "$FREE_PIPELINE@v$FREE_VERSION" --local --mock \
             --inputs '{"code_diff":"diff --git a/a.ts b/a.ts\n+const x = 1;"}'
+
+      # The paid path. It must fail, and it must fail with a reason a consumer
+      # can act on: the marketplace answers a download it wants paid for with
+      # 402 and the price. If the CLI ever swallows that and prints "not
+      # found", the consumer is left guessing — so the build fails when the
+      # message stops being honest.
+      - name: A paid pipeline says what it costs
+        run: |
+          set -uo pipefail
+          out=$(agentsmarket pipeline call "$PAID_PIPELINE@$PAID_VERSION" --local --mock \
+            --inputs '{"code_diff":"diff --git a/a.ts b/a.ts\n+const x = 1;"}' 2>&1)
+          code=$?
+          echo "$out"
+          if [ "$code" -eq 0 ]; then
+            echo "::error::$PAID_PIPELINE@$PAID_VERSION is a paid pipeline and it just installed for free — either the price is gone or the payment gate is broken. Both are release blockers."
+            exit 1
+          fi
+          echo "$out" | grep -qiE '402|payment|price|usdc' || {
+            echo "::error::the paid pipeline failed, but the message does not say why. A consumer has to be told that the download costs money, not shown 'not found'."
+            exit 1
+          }
+          echo "::notice::a paid pipeline is not free to download. The identity above was minted seconds ago and holds no funds, so the marketplace answered 402. A consumer of a paid pipeline needs a funded identity; the price of every download is in the catalogue."
+          echo "  the paid pipeline refused an unfunded identity, and said so"

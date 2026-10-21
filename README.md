@@ -69,7 +69,8 @@ reviewable, not because CI checks them.
 commit SHA. The review logic lives in that one file, so a fix ships here once
 and every consumer gets it on the next pin bump.
 
-Inputs are optional. `pipeline_version` defaults to `2.0.4`; `focus_area` and
+Inputs are optional. `pipeline_version` is unset by default, which installs
+whatever version is current; `focus_area` and
 `severity` are left unset on purpose, so each pipeline keeps its own default
 (`security` for the audit, `all` for style). `advisory` is a string, `"false"`
 by default: a failing pipeline fails the job, so a broken review is visible
@@ -101,9 +102,16 @@ One command. It downloads the pipeline and runs it — no install step, no
 lockfile to understand:
 
 ```bash
-npx @agentsmarket/cli pipeline call style-review@2.0.4 --local \
+npx @agentsmarket/cli pipeline call style-review@3.1.0 --local \
   --inputs '{"code_diff":"<git diff>"}'
 ```
+
+> **Free to pull, and the difference is stated out loud.** The two public
+> pipelines — `style-review` and `code-review-security-audit` — cost nothing to
+> download, and the command above works with an identity that holds no money.
+> A pipeline *with* a price refuses an empty wallet with a `402`, because that
+> is what a price is. The smoke test runs both halves on every push, so neither
+> can change quietly.
 
 In your own GitHub workflow, one file and five lines. Every option has a
 working default, so there is nothing to choose:
