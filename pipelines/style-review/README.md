@@ -1,6 +1,6 @@
 ---
 name: style-review
-version: 3.1.0
+version: 3.2.0
 description: |
   AI-powered code style review for diffs. Identifies naming inconsistencies,
   missing types, unused exports, magic numbers, and codebase-pattern violations.
@@ -99,6 +99,19 @@ Why: a model asked to count a list it is writing gets it wrong — one run in te
 said "8 findings" over ten — and a wrong count is worse than no count. Count the
 `findings` array yourself, or read `findings_count_json` from the action, which
 computes it in code.
+
+## What changed in 3.2.0
+
+**One issue, one comment.** The aggregate stage emitted its own copy of the
+findings array, re-derived from the analyze stage's output. The two copies
+disagreed on line numbers, so the consumer's merge — which drops a finding
+that repeats at the same file and line — kept both, and the reader got every
+issue twice. A measured run on a 106-line diff produced 22 comments for
+about eleven issues; the same complaint ("no type annotation") appeared five
+times, at 99% confidence each.
+
+The aggregate stage now copies the analyze stage's findings verbatim, and the
+analyze stage is told that two findings with one cause are one finding.
 
 ## Installation
 

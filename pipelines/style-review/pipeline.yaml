@@ -1,5 +1,5 @@
 # name: style-review
-# version: 3.1.0
+# version: 3.2.0
 # description: AI-powered code style review for diffs. Identifies naming inconsistencies, missing types, unused exports, magic numbers, and codebase-pattern violations. Outputs structured findings with severity + line + category + fix suggestion + estimated impact. Vertical wedge expansion: code style review as paid AI agent service at $0.001/call.
 # price_usdc: 0
 # call_price_usdc: 1000  # free to download, paid per call on the server path
@@ -15,7 +15,7 @@
 #   - focus_area (enum naming/types/exports/magic_numbers/all, default all)
 #   - severity_threshold (enum low/medium/high/critical, default low)
 name: style-review
-version: 3.1.0
+version: 3.2.0
 description: AI code style review of diffs — identifies naming inconsistencies, missing types, unused exports, magic numbers, and codebase-pattern violations. Structured findings with severity + category + fix + impact. Vertical wedge expansion path — code style review as paid AI agent service.
 author_id: agentsmarket-team
 license: MIT
@@ -142,6 +142,15 @@ stages:
       Focus area: {{focus_area}} — prioritize accordingly.
 
       Report AT MOST 8 findings, highest severity first. Drop anything below the severity floor rather than shrinking the JSON. For EACH issue, emit a JSON object with:
+
+      Two findings that share one cause are one finding: report the first place it
+      appears and say in the description where else it appears ("five functions omit
+      parameter types"). The reader counts comments, and five comments saying the
+      same thing is one finding and four lines of noise.
+
+      `confidence` is how sure you are that the pattern is there; `severity` is what
+      it costs the reader. A missing type annotation is certain and cheap: report
+      it once per file, at low severity.
         - `file` (string — path of file containing the issue, e.g., "src/api/users.ts")
         - `line` (integer — line number of the issue, NOT a range)
         - `severity` (critical | high | medium | low)
@@ -211,7 +220,12 @@ stages:
         Do not state how many findings there are. Counts are the caller's job, and a
         model that counts a list it is writing gets it wrong. Name the sections, name
         the issues, leave the arithmetic out.
-        - `findings`: array of {file, line, severity, category, description, fix_suggestion, estimated_impact, confidence}
+        - `findings`: the analyze stage's findings, copied VERBATIM — same file, same
+          line, same severity, same wording. Do not re-derive them, do not re-word
+          them, do not add and do not drop any. The consumer merges this array with
+          the analyze stage's own output and drops what repeats; a copy that differs
+          by a line number reads as a second finding, and the reader gets the same
+          issue twice.
 
       Example finding item:
         {"file": "src/api/users.ts", "line": 42, "severity": "high", "category": "naming", "description": "..."}
