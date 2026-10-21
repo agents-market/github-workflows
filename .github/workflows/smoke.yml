@@ -142,10 +142,16 @@ jobs:
       # message stops being honest.
       - name: A paid pipeline says what it costs
         run: |
-          set -uo pipefail
-          out=$(agentsmarket pipeline call "$PAID_PIPELINE@$PAID_VERSION" --local --mock \
-            --inputs '{"code_diff":"diff --git a/a.ts b/a.ts\n+const x = 1;"}' 2>&1)
-          code=$?
+          # `if`, not `$(...)` then `$?`: the runner executes this file with
+          # `bash -e`, so a command that fails outside a condition takes the
+          # whole script with it — and the exit code we came here to look at
+          # is exactly the one that was never read.
+          if out=$(agentsmarket pipeline call "$PAID_PIPELINE@$PAID_VERSION" --local --mock \
+            --inputs '{"code_diff":"diff --git a/a.ts b/a.ts\n+const x = 1;"}' 2>&1); then
+            code=0
+          else
+            code=$?
+          fi
           echo "$out"
           if [ "$code" -eq 0 ]; then
             echo "::error::$PAID_PIPELINE@$PAID_VERSION is a paid pipeline and it just installed for free — either the price is gone or the payment gate is broken. Both are release blockers."
