@@ -108,10 +108,11 @@ The catalogue is generated from the official file, not written by hand —
 `pipelines/code-review-security-audit/cwe-catalogue.csv`.
 
 **Verifying the ids is still the consumer's job.** The closed list removes
-invented ids; it does not prove the id is the *right* one. `scripts/verify-cwe.py`
-(the same repository) checks every id a run produced against the live official
-catalogue and returns the official name and link, and the reference workflow
-renders them next to the finding.
+invented ids; it does not prove the id is the *right* one. The reference
+workflow in this repository checks every id a run produced against the same
+catalogue — read out of the installed pipeline, so the check works in any
+repository that copies the workflow — and prints the official name and the
+link to MITRE next to the finding.
 
 ## Breaking change in 3.0.0
 

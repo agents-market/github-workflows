@@ -3,7 +3,7 @@
 workflow verifies against are the same catalogue.
 
 Two files, one list. The prompt tells the model which ids it may use; the
-snapshot is what `verify-cwe.py` checks the produced ids against. If they
+snapshot is what the review workflow checks the produced ids against. If they
 drift, the workflow reports ids the pipeline itself was told to use as
 "not in the official catalogue" — a false alarm on every run, and a reader who
 has learned to ignore the warning.
