@@ -1,6 +1,6 @@
 ---
 name: code-review-security-audit
-version: 3.1.0
+version: 3.2.0
 description: |
   AI security audit of code diffs — structured findings (severity, line, CWE,
   fix), aggregate risk score, and prioritized remediation recommendations.
@@ -81,6 +81,37 @@ the merge. Pair it with `style-review` for a combined security + style check.
 
 Every finding includes `file` + `line` + `cwe_id` (when applicable) so the
 wrapper can post inline PR comments at the right location with CWE references.
+
+## What changed in 3.2.0
+
+**`cwe_id` is now drawn from the official catalogue, and `pattern_scan` no longer
+guesses one.**
+
+The scanner stage used to name a weakness class for every candidate it found,
+from memory. Those ids were never checked against anything: a review of this
+repository's history showed codes that do not exist in MITRE's catalogue, and
+nothing downstream could tell a real id from a remembered one.
+
+Now:
+
+- `deep_review` picks the id from a closed list — the official MITRE catalogue,
+  snapshot `2026-10-21`, 268 entries, embedded in the prompt. If nothing in the
+  list describes the weakness, `cwe_id` is `null`. An id outside the list is no
+  longer possible by construction.
+- `pattern_scan` no longer emits `cwe_id` at all. It is a cheap pre-filter; it
+  should not decide a weakness class, and the stage that judges the issue is
+  the one that names it.
+
+The catalogue is generated from the official file, not written by hand —
+`scripts/build-cwe-catalogue.py` in the repository builds it from
+`https://cwe.mitre.org/data/csv/1000.csv` and keeps the snapshot in
+`pipelines/code-review-security-audit/cwe-catalogue.csv`.
+
+**Verifying the ids is still the consumer's job.** The closed list removes
+invented ids; it does not prove the id is the *right* one. `scripts/verify-cwe.py`
+(the same repository) checks every id a run produced against the live official
+catalogue and returns the official name and link, and the reference workflow
+renders them next to the finding.
 
 ## Breaking change in 3.0.0
 

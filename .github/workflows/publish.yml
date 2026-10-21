@@ -229,6 +229,15 @@ jobs:
               exit 1
             fi
 
+            # The catalogue in the prompt and the catalogue the workflow checks
+            # the produced ids against must be one list. Drift means the review
+            # reports ids the pipeline itself was told to use as unverified —
+            # a false alarm on every run, and a reader who learns to ignore it.
+            CAT="pipelines/$SLUG/cwe-catalogue.csv"
+            if [ -f "$CAT" ]; then
+              python3 scripts/check-catalogue.py "$FILE" "$CAT"
+            fi
+
             npx @agentsmarket/cli@${CLI_VERSION} validate "pipelines/$SLUG/pipeline.yaml"
             echo "::endgroup::"
           done

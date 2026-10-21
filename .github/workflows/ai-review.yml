@@ -297,6 +297,19 @@ jobs:
             echo "skipped=${SKIPPED:-0}"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Verify CWE ids against the official catalogue
+        id: cwe
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          FINDINGS: ${{ steps.review_retry.outputs.findings_json || steps.review.outputs.findings_json }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${FINDINGS:-[]}" > "$RUNNER_TEMP/findings.json"
+          python3 scripts/verify-cwe.py "$RUNNER_TEMP/findings.json" > "$RUNNER_TEMP/cwe.json"
+          echo "report=$(cat "$RUNNER_TEMP/cwe.json")" >> "$GITHUB_OUTPUT"
+          python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("  CWE: %d/%d confirmed against the official catalogue (%s), not found: %s" % (len(r["verified"]), len(r["used"]), r["source"], r["unknown"]))' "$RUNNER_TEMP/cwe.json"
+
       - name: Upsert summary comment
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
@@ -309,6 +322,7 @@ jobs:
           COUNTS: ${{ steps.count.outputs.breakdown || 'n/a' }}
           TOTAL: ${{ steps.count.outputs.total || '0' }}
           SKIPPED: ${{ steps.count.outputs.skipped || '0' }}
+          CWE_REPORT: ${{ steps.cwe.outputs.report || '{}' }}
           RUN_STATUS: ${{steps.review_retry.outputs.status || steps.review.outputs.status}}
         with:
           script: |
@@ -324,15 +338,30 @@ jobs:
                 b += `⚠️ Pipeline did not complete (\`${process.env.RUN_STATUS || 'no status'}\`). `;
                 b += `See the [run log](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).\n`;
               } else {
+                let cwe = {};
+                try { cwe = JSON.parse(process.env.CWE_REPORT || '{}'); } catch {}
                 b += `| Metric | Value |\n|---|---:|\n`;
                 b += `| Duration | ${(Number(process.env.DURATION || 0) / 1000).toFixed(1)}s |\n`;
                 b += `| Findings | ${process.env.TOTAL || '0'} (${process.env.COUNTS || 'n/a'}) |\n`;
-                b += `| Market-equivalent cost | ${process.env.COST || '0'} USDC |\n\n`;
+                b += `| Market-equivalent cost | ${process.env.COST || '0'} USDC |\n`;
+                const used = Array.isArray(cwe.used) ? cwe.used : [];
+                if (used.length) {
+                  const src = cwe.source === 'live'
+                    ? 'the official MITRE catalogue'
+                    : `the MITRE catalogue snapshot ${cwe.snapshot_date || ''}`.trim();
+                  b += `| CWE codes | ${Object.keys(cwe.verified || {}).length}/${used.length} confirmed against ${src} |\n`;
+                }
+                b += `\n`;
                 const skipped = Number(process.env.SKIPPED || 0);
                 if (skipped > 0) {
                   b += `⚠️ **${skipped} finding(s) were dropped** for missing file metadata. `;
                   b += `They are not in the count above and not in the inline comments. `;
                   b += `This is a defect in the pipeline, not a clean result.\n\n`;
+                }
+                const unknown = Array.isArray(cwe.unknown) ? cwe.unknown : [];
+                if (unknown.length) {
+                  b += `⚠️ **Not in the official catalogue:** ${unknown.map(x => `\`${x}\``).join(', ')}. `;
+                  b += `The model wrote these codes; they could not be confirmed and must not be cited.\n\n`;
                 }
                 b += `> Cost is a market-rate estimate of the tokens consumed. This pipeline `;
                 b += `ran locally in the Actions runner — **nothing was charged**.\n\n`;
@@ -365,6 +394,7 @@ jobs:
         env:
           FINDINGS: ${{steps.review_retry.outputs.findings_json || steps.review.outputs.findings_json}}
           MARKER: ${{ matrix.pipeline.slug }}
+          CWE_REPORT: ${{ steps.cwe.outputs.report || '{}' }}
         with:
           script: |
             // Own threads via a body marker, never by actor login: REST calls the
@@ -375,6 +405,9 @@ jobs:
             try {
               let findings = [];
               try { findings = JSON.parse(process.env.FINDINGS || '[]'); } catch {}
+              let cwe = {};
+              try { cwe = JSON.parse(process.env.CWE_REPORT || '{}'); } catch {}
+              const verified = cwe.verified || {};
               const valid = findings.filter(f =>
                 f && typeof f.file === 'string' && f.file.length > 0
                 && Number.isFinite(f.line) && f.line > 0);
@@ -418,7 +451,14 @@ jobs:
                 const key = `${f.file}:${f.line}`;
                 if (live.has(key) || !inDiff.has(f.file)) { skipped++; continue; }
                 let b = `${MARK}\n${emoji[f.severity] || '⚪'} **${String(f.severity || 'unknown').toUpperCase()}**`;
-                if (f.cwe) b += ` \`${f.cwe}\``;
+                if (f.cwe) {
+                  const id = String(f.cwe).trim().toUpperCase();
+                  const v = verified[id];
+                  b += ` \`${id}\``;
+                  // The id is only worth printing if it was checked against the
+                  // official catalogue; an unchecked code is worse than none.
+                  b += v ? ` — [${v.short || v.name}](${v.url})` : ` — not in the official catalogue`;
+                }
                 b += ` (conf ${Math.round((f.confidence || 0) * 100)}%): ${f.message || ''}`;
                 if (f.recommendation) b += `\n\n💡 ${f.recommendation}`;
                 try {
