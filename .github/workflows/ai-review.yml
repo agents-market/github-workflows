@@ -378,6 +378,8 @@ jobs:
           SKIPPED: ${{ steps.count.outputs.skipped || '0' }}
           CWE_REPORT: ${{ steps.cwe.outputs.report || '{}' }}
           RUN_STATUS: ${{steps.review_retry.outputs.status || steps.review.outputs.status}}
+          FAILED_COUNT: ${{ steps.review_retry.outputs.failed_count || steps.review.outputs.failed_count || '0' }}
+          MAX_SEVERITY: ${{ steps.review_retry.outputs.max_severity || steps.review.outputs.max_severity || '' }}
         with:
           script: |
             try {
@@ -388,7 +390,13 @@ jobs:
               const existing = prior.find(c => c.body && c.body.includes(marker));
               let b = marker + '\n';
               b += `## AI Review — ${process.env.MARKER}\n\n`;
-              if (process.env.RUN_STATUS !== 'passed' || !process.env.RESULT) {
+              // `status` from the action is the GATE verdict, not the run status:
+              // it reads "failed" when a finding is at or above the threshold.
+              // Reading it as "the pipeline did not complete" put that sentence
+              // on top of a review that had found eight real problems — the
+              // alarm was crying wolf over the very findings it was reporting.
+              // No result at all is what "did not complete" means.
+              if (!process.env.RESULT) {
                 b += `⚠️ Pipeline did not complete (\`${process.env.RUN_STATUS || 'no status'}\`). `;
                 b += `See the [run log](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).\n`;
               } else {
@@ -398,6 +406,10 @@ jobs:
                 b += `| Duration | ${(Number(process.env.DURATION || 0) / 1000).toFixed(1)}s |\n`;
                 b += `| Findings | ${process.env.TOTAL || '0'} (${process.env.COUNTS || 'n/a'}) |\n`;
                 b += `| Market-equivalent cost | ${process.env.COST || '0'} USDC |\n`;
+                if (process.env.RUN_STATUS === 'failed') {
+                  const n = Number(process.env.FAILED_COUNT || 0);
+                  b += `| Gate | failed — ${n} finding${n === 1 ? '' : 's'} at or above ${process.env.MAX_SEVERITY || 'the threshold'} |\n`;
+                }
                 const used = Array.isArray(cwe.used) ? cwe.used : [];
                 if (used.length && cwe.source !== 'none') {
                   b += `| CWE codes | ${Object.keys(cwe.verified || {}).length}/${used.length} confirmed against the MITRE catalogue (snapshot ${cwe.snapshot_date || '?'}) |\n`;
