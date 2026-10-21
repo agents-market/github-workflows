@@ -297,18 +297,72 @@ jobs:
             echo "skipped=${SKIPPED:-0}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Verify CWE ids against the official catalogue
+      # The catalogue is not a file this repository owns — it travels inside the
+      # pipeline, because a consumer who copies this file has no scripts/ and
+      # no catalogue. The installed pipeline.yaml carries the same official
+      # list the model was given, so the check reads it from there: one list,
+      # two readers, nothing to drift.
+      - name: Verify CWE ids against the published catalogue
         id: cwe
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
         env:
           FINDINGS: ${{ steps.review_retry.outputs.findings_json || steps.review.outputs.findings_json }}
+          PIPELINE_FILE: ${{ steps.install.outputs.path }}
         run: |
           set -euo pipefail
           printf '%s' "${FINDINGS:-[]}" > "$RUNNER_TEMP/findings.json"
-          python3 scripts/verify-cwe.py "$RUNNER_TEMP/findings.json" > "$RUNNER_TEMP/cwe.json"
+          python3 - "$RUNNER_TEMP/findings.json" "$PIPELINE_FILE" > "$RUNNER_TEMP/cwe.json" <<'PY'
+          import json, re, sys
+          findings = json.load(open(sys.argv[1]))
+          if isinstance(findings, dict):
+              findings = findings.get("findings") or []
+          # "CWE-89 — SQL Injection" lines: the catalogue the prompt carried.
+          catalogue = {}
+          date = ""
+          try:
+              for line in open(sys.argv[2], encoding="utf-8"):
+                  m = re.match(r"^CWE catalogue — .*snapshot (\d{4}-\d{2}-\d{2}), (\d+) entries\.", line.strip())
+                  if m:
+                      date = m.group(1)
+                  m = re.match(r"^(CWE-\d+) — (.+)$", line.strip())
+                  if m:
+                      catalogue[m.group(1).upper()] = m.group(2).strip()
+          except FileNotFoundError:
+              pass
+          used, without_id = [], 0
+          for f in findings:
+              if not isinstance(f, dict):
+                  continue
+              cid = f.get("cwe") or f.get("cwe_id")
+              if not cid:
+                  without_id += 1
+                  continue
+              cid = str(cid).strip().upper()
+              if cid not in used:
+                  used.append(cid)
+          verified, unknown = {}, []
+          for cid in used:
+              if cid in catalogue:
+                  verified[cid] = {
+                      "name": catalogue[cid],
+                      "short": catalogue[cid],
+                      "url": "https://cwe.mitre.org/data/definitions/%s.html" % cid.split("-")[1],
+                  }
+              else:
+                  unknown.append(cid)
+          json.dump({
+              "source": "published catalogue" if catalogue else "none",
+              "snapshot_date": date,
+              "catalogue_size": len(catalogue),
+              "used": used,
+              "verified": verified,
+              "unknown": unknown,
+              "without_id": without_id,
+          }, sys.stdout, ensure_ascii=False)
+          PY
           echo "report=$(cat "$RUNNER_TEMP/cwe.json")" >> "$GITHUB_OUTPUT"
-          python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("  CWE: %d/%d confirmed against the official catalogue (%s), not found: %s" % (len(r["verified"]), len(r["used"]), r["source"], r["unknown"]))' "$RUNNER_TEMP/cwe.json"
+          python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("  CWE: %d/%d confirmed against the %s (%s), not found: %s" % (len(r["verified"]), len(r["used"]), r["source"], r["snapshot_date"] or "no catalogue", r["unknown"]))' "$RUNNER_TEMP/cwe.json"
 
       - name: Upsert summary comment
         if: always() && github.event_name == 'pull_request'
@@ -345,11 +399,8 @@ jobs:
                 b += `| Findings | ${process.env.TOTAL || '0'} (${process.env.COUNTS || 'n/a'}) |\n`;
                 b += `| Market-equivalent cost | ${process.env.COST || '0'} USDC |\n`;
                 const used = Array.isArray(cwe.used) ? cwe.used : [];
-                if (used.length) {
-                  const src = cwe.source === 'live'
-                    ? 'the official MITRE catalogue'
-                    : `the MITRE catalogue snapshot ${cwe.snapshot_date || ''}`.trim();
-                  b += `| CWE codes | ${Object.keys(cwe.verified || {}).length}/${used.length} confirmed against ${src} |\n`;
+                if (used.length && cwe.source !== 'none') {
+                  b += `| CWE codes | ${Object.keys(cwe.verified || {}).length}/${used.length} confirmed against the MITRE catalogue (snapshot ${cwe.snapshot_date || '?'}) |\n`;
                 }
                 b += `\n`;
                 const skipped = Number(process.env.SKIPPED || 0);
@@ -360,7 +411,7 @@ jobs:
                 }
                 const unknown = Array.isArray(cwe.unknown) ? cwe.unknown : [];
                 if (unknown.length) {
-                  b += `⚠️ **Not in the official catalogue:** ${unknown.map(x => `\`${x}\``).join(', ')}. `;
+                  b += `⚠️ **Not in the published catalogue:** ${unknown.map(x => `\`${x}\``).join(', ')}. `;
                   b += `The model wrote these codes; they could not be confirmed and must not be cited.\n\n`;
                 }
                 b += `> Cost is a market-rate estimate of the tokens consumed. This pipeline `;
@@ -457,7 +508,7 @@ jobs:
                   b += ` \`${id}\``;
                   // The id is only worth printing if it was checked against the
                   // official catalogue; an unchecked code is worse than none.
-                  b += v ? ` — [${v.short || v.name}](${v.url})` : ` — not in the official catalogue`;
+                  b += v ? ` — [${v.short || v.name}](${v.url})` : ` — not in the published catalogue`;
                 }
                 b += ` (conf ${Math.round((f.confidence || 0) * 100)}%): ${f.message || ''}`;
                 if (f.recommendation) b += `\n\n💡 ${f.recommendation}`;
