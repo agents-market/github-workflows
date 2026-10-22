@@ -134,6 +134,9 @@ and each pipeline's own README describes its inputs and outputs.
   the pipeline's own — the scanner is cheap by design, the reviews are not —
   and the Action's `model`, `primary_provider` and `primary_model` inputs do
   not override a stage that names its own model.
+- **The CLI must be 0.12.5 or newer** for those pipelines. Before that version
+  the provider field was read literally, and installing one failed with
+  "Provider '${input.provider}' is not registered".
 - Agent identity. `pipeline call` downloads from the marketplace, which is an
   authenticated request. Run `npx @agentsmarket/cli init` once to generate a
   keypair.

@@ -26,15 +26,20 @@ permissions:
 
 # The lowest CLI that passes this file. Both the version installed below and the
 # guard on ai-review.yml read it, so the two can never disagree about it.
+#
+# 0.12.5, not 0.12.4: the pipelines take their provider from an input
+# (`provider: ${input.provider}`), and 0.12.4 reads that as the literal name of
+# a provider and refuses to install: "Provider '${input.provider}' is not
+# registered". 0.12.5 resolves input references on that field.
 env:
-  CLI_FLOOR: '0.12.4'
+  CLI_FLOOR: '0.12.5'
 
   # The free public pipeline this repository publishes, and the version the
   # test pins. `pipeline info` in the job below refuses to guess: a version
   # that is not published fails the test loudly, instead of quietly installing
   # whatever the catalogue happens to serve.
   FREE_PIPELINE: 'code-review-security-audit'
-  FREE_VERSION: '3.3.1'
+  FREE_VERSION: '3.3.2'
 
   # A pipeline that is actually paid. It stays priced at 1000 USDC on purpose —
   # it is what proves the paid path is real and what the consumer is told when
@@ -48,7 +53,7 @@ env:
   # right reason on the wrong premise. The four other pipelines in this
   # repository are priced at 1000 USDC and stay that way.
   PAID_PIPELINE: 'dependency-scanner'
-  PAID_VERSION: '2.0.9'
+  PAID_VERSION: '2.0.10'
 
 jobs:
   smoke:
