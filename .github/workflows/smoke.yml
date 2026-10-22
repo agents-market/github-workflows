@@ -36,11 +36,19 @@ env:
   FREE_PIPELINE: 'code-review-security-audit'
   FREE_VERSION: '3.2.0'
 
-  # A paid version of the same pipeline. It stays priced at 1000 USDC on
-  # purpose — it is what proves the paid path is real and what the consumer
-  # is told when they hit it.
-  PAID_PIPELINE: 'style-review'
-  PAID_VERSION: '2.0.4'
+  # A pipeline that is actually paid. It stays priced at 1000 USDC on purpose —
+  # it is what proves the paid path is real and what the consumer is told when
+  # they hit it.
+  #
+  # Not one of the two flagships: those are free to download by decision, and
+  # the price a pipeline carries is the price of its current version. When
+  # style-review was repriced to free, every one of its old versions followed
+  # it down to zero — and this test, which pinned style-review@2.0.4 as "a paid
+  # pipeline", began asserting that a free install fails. It failed for the
+  # right reason on the wrong premise. The four other pipelines in this
+  # repository are priced at 1000 USDC and stay that way.
+  PAID_PIPELINE: 'dependency-scanner'
+  PAID_VERSION: '2.0.9'
 
 jobs:
   smoke:
