@@ -1,10 +1,10 @@
 # Copy this file to .github/workflows/ai-review.yml in your repository and set
 # one secret: MINIMAX_API_KEY.
 #
-# These two pipelines pin their provider and model in every stage, and a stage
-# that declares its own provider or model wins over the Action's inputs. There
-# is no setting to switch to OpenAI or Anthropic today — see examples/README.md
-# for why. This is a runtime limitation, not a choice.
+# The provider is a pipeline input (`provider`, default minimax), so another
+# provider is a different input value — pass it in `pipeline_inputs`. The model
+# is the pipeline's own: the Action's `model` input does not override a stage
+# that names its own model.
 #
 # Pin a full commit SHA, never a tag — a tag can move under you, a SHA cannot.
 # To find the current one:

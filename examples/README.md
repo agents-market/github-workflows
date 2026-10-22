@@ -8,11 +8,11 @@ else. Each example is copy-pasteable as-is — no editing, no choices to make.
 Nothing to install first. The pipeline downloads and runs:
 
 ```bash
-npx @agentsmarket/cli pipeline call style-review@3.1.0 --local \
+npx @agentsmarket/cli pipeline call style-review@3.2.1 --local \
   --inputs '{"code_diff":"<paste a git diff>"}'
 ```
 
-Both `style-review@3.1.0` and `style-review@v3.1.0` work — releases are tagged
+Both `style-review@3.2.1` and `style-review@v3.2.1` work — releases are tagged
 with a `v`, so people type it, and it is accepted.
 
 The public pipelines are free to download, so the command above works with any
@@ -126,16 +126,14 @@ and each pipeline's own README describes its inputs and outputs.
 
 - Node.js 20 or newer.
 - `MINIMAX_API_KEY` for real runs. It is the model provider's key, not ours —
-  requests go to MiniMax, not to a server we proxy. **You cannot substitute
-  another provider today**, and it is worth knowing why before you go looking
-  for a setting. The Action takes `provider`, `model`, `primary_provider` and
-  `primary_model` inputs, and all four are ignored for these pipelines: a stage
-  that declares its own provider wins (`stages.ts:495`), and a stage's own model
-  wins over everything (`model-resolver.ts:232`). Both fields also read as
-  literals — `provider: ${input.provider}` is not resolved from inputs, it is
-  treated as a provider literally named `${input.provider}` and the run fails
-  with "not registered". Lifting this needs the runtime to resolve input refs on
-  those two fields; it is written up rather than promised.
+  requests go to the provider, not to a server we proxy.
+- **The provider can be chosen per run.** Every pipeline takes a `provider`
+  input (`minimax` by default; `openrouter`, `openai`, `anthropic`,
+  `replicate` also work) and every stage uses it, so a different provider is a
+  different input value, not an edit of the pipeline file. The *model* is still
+  the pipeline's own — the scanner is cheap by design, the reviews are not —
+  and the Action's `model`, `primary_provider` and `primary_model` inputs do
+  not override a stage that names its own model.
 - Agent identity. `pipeline call` downloads from the marketplace, which is an
   authenticated request. Run `npx @agentsmarket/cli init` once to generate a
   keypair.

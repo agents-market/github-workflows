@@ -36,6 +36,7 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 
 | Input | Type | Default | Description |
 |-------|------|---------|-------------|
+| `provider` | enum | `minimax` | LLM provider for this run: `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` |
 | `code_diff` | string | **required** | Git diff or unified patch text (1..50000 chars). Standard hunk header format `@@ -a,b +c,d @@`. |
 | `language` | typescript/javascript/python/rust/go | `typescript` | Primary language in the diff (drives framework detection and test syntax; default: typescript). |
 | `test_framework` | vitest/jest/pytest/auto | `auto` | Test framework to generate for (auto = detect from imports: vitest/jest for TS/JS, pytest for Python;… |

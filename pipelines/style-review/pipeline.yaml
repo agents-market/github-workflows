@@ -24,6 +24,11 @@ author_id: agentsmarket-team
 license: MIT
 
 inputs:
+  provider:
+    type: string
+    required: false
+    default: minimax
+    description: "LLM provider for this run: minimax, openrouter, openai, anthropic, replicate."
   code_diff:
     type: string
     required: true
@@ -73,7 +78,7 @@ defaults:
 stages:
   - id: profile_style
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -119,7 +124,7 @@ stages:
 
   - id: analyze_style
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -189,7 +194,7 @@ stages:
     fields: [findings]
 
   - id: aggregate_style
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text

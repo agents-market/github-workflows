@@ -14,6 +14,11 @@ cost:
   max_per_run_usdc: 1.00
   on_exceed: fail
 inputs:
+  provider:
+    type: string
+    required: false
+    default: minimax
+    description: "LLM provider for this run: minimax, openrouter, openai, anthropic, replicate."
   code_diff:
     type: string
     required: true
@@ -71,7 +76,7 @@ defaults:
 stages:
   - id: profile_code_behavior
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -119,7 +124,7 @@ stages:
     fields: [functions, stats]
   - id: generate_tests
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -173,7 +178,7 @@ stages:
     output_format: structured_json
     fields: [test_cases, summary]
   - id: aggregate_to_test_file
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text

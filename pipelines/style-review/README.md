@@ -51,6 +51,7 @@ security and style in the same PR.
 
 | Input | Type | Default | Description |
 |-------|------|---------|-------------|
+| `provider` | enum | `minimax` | LLM provider for this run: `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` |
 | `code_diff` | string (1..50000 chars) | **required** | Git diff or unified patch text |
 | `language` | enum | `generic` | `typescript` / `javascript` / `python` / `rust` / `go` / `solidity` / `generic` |
 | `focus_area` | enum | `all` | `naming` / `types` / `exports` / `magic_numbers` / `all` |
@@ -127,9 +128,9 @@ builds, ask the catalogue what the current version is:
 agentsmarket pipeline info style-review
 ```
 
-Needs `MINIMAX_API_KEY` in the environment. The stages are pinned to the MiniMax
-provider and model today; `provider` and `model` are stage inputs and can be made
-per-stage without changing the pipeline file.
+`MINIMAX_API_KEY` in the environment. The provider is the `provider` input —
+`minimax` by default — so another one is a different input value, not an edit
+of the pipeline file. The model is the pipeline's own.
 
 ## Usage in GitHub Actions
 
