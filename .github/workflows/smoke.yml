@@ -34,7 +34,7 @@ env:
   # that is not published fails the test loudly, instead of quietly installing
   # whatever the catalogue happens to serve.
   FREE_PIPELINE: 'code-review-security-audit'
-  FREE_VERSION: '3.2.0'
+  FREE_VERSION: '3.3.0'
 
   # A pipeline that is actually paid. It stays priced at 1000 USDC on purpose —
   # it is what proves the paid path is real and what the consumer is told when
