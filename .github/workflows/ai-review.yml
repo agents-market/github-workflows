@@ -499,6 +499,39 @@ jobs:
               const inDiff = new Set(files.map(f => f.filename));
 
               let resolved = 0;
+              // A finding's line is not stable: the same weakness comes back on
+              // a neighbouring line from run to run, and the comment key is
+              // path:line — so every run added new comments and the pull
+              // request ended up with 52 of them for 11 weaknesses. A thread of
+              // ours that carries the same class within a few lines of a
+              // current finding is the same weakness seen from another line:
+              // resolve it and let the fresh comment take its place. Same
+              // class only — two different weaknesses of one class can share a
+              // file, and they must not eat each other.
+              const TWIN_LINES = 3;
+              const cweOfThread = (body) => {
+                const m = /CWE-\d+/i.exec(String(body || ''));
+                return m ? m[0].toUpperCase() : null;
+              };
+              let twins = 0;
+              for (const t of ours) {
+                if (t.isResolved || t.isOutdated || !inDiff.has(t.path)) continue;
+                const cwe = cweOfThread(t.comments.nodes[0] && t.comments.nodes[0].body);
+                if (!cwe) continue;
+                const hit = valid.find(f =>
+                  f.file === t.path
+                  && String(f.cwe || '').trim().toUpperCase() === cwe
+                  && Number.isFinite(t.line)
+                  && Math.abs(t.line - f.line) >= 1
+                  && Math.abs(t.line - f.line) <= TWIN_LINES);
+                if (!hit) continue;
+                await github.graphql(
+                  `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }`,
+                  { id: t.id });
+                live.delete(`${t.path}:${t.line}`);
+                resolved++; twins++;
+              }
+
               for (const t of ours) {
                 if (!t.isResolved && (t.isOutdated || !inDiff.has(t.path))) {
                   await github.graphql(
@@ -535,7 +568,7 @@ jobs:
                   core.warning(`inline skip ${key}: ${e.message}`);
                 }
               }
-              core.info(`threads(${process.env.MARKER}) — ${posted} posted, ${resolved} resolved, ${live.size} live, ${skipped} suppressed`);
+              core.info(`threads(${process.env.MARKER}) — ${posted} posted, ${resolved} resolved (${twins} twins), ${live.size} live, ${skipped} suppressed`);
             } catch (e) {
               core.warning(`thread sync FAILED — inline threads not synced: ${e.message}`);
               await core.summary.addHeading('Inline thread sync failed', 3)
