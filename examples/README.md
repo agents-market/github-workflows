@@ -83,7 +83,10 @@ to set them:
 
 The security audit's own default is `medium`, and it is the one to keep: on
 this repository's fixture it found every planted weakness and invented
-nothing.
+nothing. On that fixture that means the eleven planted weaknesses plus one to
+three observations about missing controls (a route without auth, no CSRF
+token). They point at real absences, but they are not weaknesses anyone
+planted.
 
 The floor is a **hint to the model, not a filter**. The stage is told to drop
 findings below it and to report the dropped ones separately; the model decides
