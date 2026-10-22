@@ -531,9 +531,22 @@ jobs:
               // Same class only: two different weaknesses of one class can
               // share a file, and the surviving comment still names the class
               // and the file.
+              // Two ids that name one weakness are one weakness. The
+              // catalogue carries both (CWE-330 and CWE-338 both describe a
+              // random number that is not random), so the model picks either
+              // from run to run: the run of 2026-10-22 called the same
+              // Math.random token CWE-330 and then CWE-338, and the comment
+              // for the first id never closed. The reader saw the weakness
+              // twice. The map is the shortcut — it covers the pairs the
+              // catalogue offers for one weakness, not every future id.
+              const CANON = { 'CWE-330': 'CWE-338', 'CWE-259': 'CWE-798' };
+              const canon = (id) => {
+                const u = String(id || '').trim().toUpperCase();
+                return CANON[u] || u;
+              };
               const classOfText = (text) => {
                 const c = /CWE-\d+/i.exec(String(text || ''));
-                if (c) return c[0].toUpperCase();
+                if (c) return canon(c[0]);
                 const v = /CVE-\d{4}-\d+/i.exec(String(text || ''));
                 if (v) return v[0].toUpperCase();
                 // The category tag the style pipeline opens its description
@@ -615,8 +628,7 @@ jobs:
                 // the fresh one on the line the model gives this time. If
                 // closing is not allowed, the standing comment stays and no
                 // second one is added.
-                const cls = String(f.cwe || '').trim().toUpperCase()
-                  || classOfText(f.message);
+                const cls = canon(f.cwe) || classOfText(f.message);
                 const dupes = cls ? (byClass.get(`${f.file}::${cls}`) || []) : [];
                 let closed = true;
                 for (const t of dupes) {
