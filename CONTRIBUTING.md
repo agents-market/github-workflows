@@ -37,10 +37,6 @@ stages:
 
 **Important:**
 - Spec only — no `# metadata` comments at top. Metadata lives in `README.md` frontmatter.
-- A stage may read its provider from an input: `provider: ${input.provider}`,
-  with a `provider` input (default `minimax`) in `inputs:`. That is how the
-  caller picks the backend per run — a stage that hardcodes `provider: minimax`
-  ignores every caller-side choice.
 - LLM stage prompts MUST require `file` and `line` fields explicitly (integer line number, not range). Without these, the action drops findings as missing metadata. See [TASKS row 113](https://github.com/agents-market/main/blob/main/TASKS.md#row-113) for the bug class.
 
 ### 3. Write `README.md` (frontmatter + body)

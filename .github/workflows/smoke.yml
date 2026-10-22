@@ -27,10 +27,11 @@ permissions:
 # The lowest CLI that passes this file. Both the version installed below and the
 # guard on ai-review.yml read it, so the two can never disagree about it.
 #
-# 0.12.5, not 0.12.4: the pipelines take their provider from an input
-# (`provider: ${input.provider}`), and 0.12.4 reads that as the literal name of
-# a provider and refuses to install: "Provider '${input.provider}' is not
-# registered". 0.12.5 resolves input references on that field.
+# 0.12.5, not 0.12.4: release 3.3.2 of the audit took its provider from an
+# input (`provider: ${input.provider}`), and 0.12.4 reads that field literally
+# and refuses to install: "Provider '${input.provider}' is not registered".
+# 0.12.5 resolves input references there. The current releases do not need it,
+# but the floor does not go back under a release that is still in the catalogue.
 env:
   CLI_FLOOR: '0.12.5'
 

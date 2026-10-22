@@ -49,7 +49,6 @@ Pair it with `style-review` for a combined security + style check.
 
 | Input | Type | Default | Description |
 |-------|------|---------|-------------|
-| `provider` | enum | `minimax` | LLM provider for this run: `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` |
 | `code_diff` | string (1..50000 chars) | **required** | Git diff or unified patch text |
 | `language` | enum | `generic` | `typescript` / `javascript` / `python` / `rust` / `go` / `solidity` / `generic` |
 | `focus_area` | enum | `security` | `security` / `performance` / `style` / `all` |
@@ -147,9 +146,9 @@ agentsmarket pipeline install code-review-security-audit
 
 Without a version this installs the latest release; `pipeline info` names the
 current one. Needs
-`MINIMAX_API_KEY` in the environment. The provider is the `provider` input —
-`minimax` by default — so another one is a different input value, not an edit
-of the pipeline file. The model is the pipeline's own.
+`MINIMAX_API_KEY` in the environment. The stages are pinned to the MiniMax
+provider and model today; `provider` and `model` are stage inputs, so another
+provider can be selected per stage without editing the pipeline file.
 
 ## Usage in GitHub Actions
 
