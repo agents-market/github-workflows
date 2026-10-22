@@ -481,7 +481,7 @@ jobs:
                     pullRequest(number:$number){
                       reviewThreads(first:100){
                         nodes{ id isResolved isOutdated path line
-                               comments(first:1){ nodes{ body } } }
+                               comments(first:1){ nodes{ body createdAt } } }
                       } } } }`,
                 { owner: context.repo.owner, repo: context.repo.repo, number: context.issue.number });
               if (!q || !q.repository) throw new Error('graphql returned no repository — nothing to sync');
@@ -499,37 +499,41 @@ jobs:
               const inDiff = new Set(files.map(f => f.filename));
 
               let resolved = 0;
-              // A finding's line is not stable: the same weakness comes back on
-              // a neighbouring line from run to run, and the comment key is
-              // path:line — so every run added new comments and the pull
-              // request ended up with 52 of them for 11 weaknesses. A thread of
-              // ours that carries the same class within a few lines of a
-              // current finding is the same weakness seen from another line:
-              // resolve it and let the fresh comment take its place. Same
-              // class only — two different weaknesses of one class can share a
-              // file, and they must not eat each other.
-              const TWIN_LINES = 3;
+              // One comment per (file, class): the newest thread wins. The
+              // model's line for a weakness is not stable — the same weakness
+              // comes back on a neighbouring line, sometimes fourteen lines
+              // away — and the comment key is path:line, so every run added
+              // fresh comments and the fixture's pull request collected 52 of
+              // them for the 11 planted weaknesses. Same class only: two
+              // different weaknesses of one class can share a file, and the
+              // surviving comment still names the class and the file.
               const cweOfThread = (body) => {
                 const m = /CWE-\d+/i.exec(String(body || ''));
                 return m ? m[0].toUpperCase() : null;
               };
-              let twins = 0;
+              const createdAtOf = (t) =>
+                (t.comments.nodes[0] && t.comments.nodes[0].createdAt) || '';
+              const byClass = new Map();
               for (const t of ours) {
                 if (t.isResolved || t.isOutdated || !inDiff.has(t.path)) continue;
                 const cwe = cweOfThread(t.comments.nodes[0] && t.comments.nodes[0].body);
                 if (!cwe) continue;
-                const hit = valid.find(f =>
-                  f.file === t.path
-                  && String(f.cwe || '').trim().toUpperCase() === cwe
-                  && Number.isFinite(t.line)
-                  && Math.abs(t.line - f.line) >= 1
-                  && Math.abs(t.line - f.line) <= TWIN_LINES);
-                if (!hit) continue;
-                await github.graphql(
-                  `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }`,
-                  { id: t.id });
-                live.delete(`${t.path}:${t.line}`);
-                resolved++; twins++;
+                const key = `${t.path}::${cwe}`;
+                const list = byClass.get(key) || [];
+                list.push(t);
+                byClass.set(key, list);
+              }
+              let twins = 0;
+              for (const list of byClass.values()) {
+                if (list.length < 2) continue;
+                list.sort((a, b) => createdAtOf(a).localeCompare(createdAtOf(b)));
+                for (const t of list.slice(0, -1)) {
+                  await github.graphql(
+                    `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }`,
+                    { id: t.id });
+                  live.delete(`${t.path}:${t.line}`);
+                  resolved++; twins++;
+                }
               }
 
               for (const t of ours) {
