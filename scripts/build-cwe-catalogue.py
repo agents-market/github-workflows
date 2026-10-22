@@ -71,7 +71,12 @@ BLOCK = re.compile(
     r"cipher suite|protocol version|tls|ssl certificate|certificate|"
     r"dns|ip address|ipv6|proxy|load balanc|"
     r"boot code|volatile memory|register interface|control and data agents|"
-    r"lock bit|address regions|write-once|register lock|attribute|"
+    r"lock bit|address regions|write-once|register lock|"
+    # "attribute" was here to drop "attributes of an object" and the
+    # script-in-attribute variants. It also dropped CWE-1321 (prototype
+    # pollution), CWE-614 and CWE-1275 (cookie flags) — weaknesses the
+    # scope list above asks for by name.
+    r"attributes of img tags|attributes in a web page|"
     r"device|driver|router|switch|chip|bus interface",
     re.I,
 )

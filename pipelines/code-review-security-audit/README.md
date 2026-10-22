@@ -1,6 +1,6 @@
 ---
 name: code-review-security-audit
-version: 3.3.3
+version: 3.4.0
 description: |
   AI security audit of code diffs — structured findings (severity, line, CWE,
   fix), risk score and prioritized remediation recommendations.
@@ -116,7 +116,7 @@ The cost is one more model call per review.
 **`cwe_id` is drawn from the official catalogue, and `pattern_scan` no longer
 guesses one.** The scanner used to name a weakness class from memory — ids that
 were never checked against anything. Now `deep_review` picks the id from a
-closed list: the MITRE catalogue, snapshot `2026-10-21`, 268 entries, embedded
+closed list: the MITRE catalogue, snapshot `2026-10-23`, 269 entries, embedded
 in the prompt. If nothing in the list describes the weakness, `cwe_id` is
 `null`; an id outside the list is impossible by construction. The scanner emits
 no id at all — it is a pre-filter.

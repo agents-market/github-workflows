@@ -23,7 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 PIPE = ROOT / "pipelines/code-review-security-audit/pipeline.yaml"
 CATALOGUE = ROOT / "pipelines/code-review-security-audit/cwe-catalogue.csv"
 
-SNAPSHOT = "2026-10-21"
+SNAPSHOT = "2026-10-23"
 
 # The paragraph that says "every finding carries a cwe_id". The catalogue goes
 # right after it, in every prompt that contains it.

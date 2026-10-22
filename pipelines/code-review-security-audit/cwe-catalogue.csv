@@ -262,6 +262,7 @@ CWE-1287,Improper Validation of Specified Type of Input,Improper Validation of S
 CWE-1288,Improper Validation of Consistency within Input,Improper Validation of Consistency within Input,Incomplete,scope
 CWE-1289,Improper Validation of Unsafe Equivalence in Input,Improper Validation of Unsafe Equivalence in Input,Incomplete,scope
 CWE-1319,Improper Protection against Electromagnetic Fault Injection (EM-FI),Improper Protection against Electromagnetic Fault Injection (EM-FI),Incomplete,scope
+CWE-1321,Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution'),Prototype Pollution,Incomplete,scope
 CWE-1336,Improper Neutralization of Special Elements Used in a Template Engine,Improper Neutralization of Special Elements Used in a Template Engine,Incomplete,scope
 CWE-1391,Use of Weak Credentials,Use of Weak Credentials,Incomplete,scope
 CWE-1392,Use of Default Credentials,Use of Default Credentials,Incomplete,scope
