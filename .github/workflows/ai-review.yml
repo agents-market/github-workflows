@@ -481,7 +481,7 @@ jobs:
                     pullRequest(number:$number){
                       reviewThreads(first:100){
                         nodes{ id isResolved isOutdated path line
-                               comments(first:10){ totalCount nodes{ id body } } }
+                               comments(first:10){ totalCount nodes{ id databaseId body } } }
                       } } } }`,
                 { owner: context.repo.owner, repo: context.repo.repo, number: context.issue.number });
               if (!q || !q.repository) throw new Error('graphql returned no repository — nothing to sync');
@@ -539,21 +539,24 @@ jobs:
               // claiming weaknesses that were fixed days ago.
               const closeThread = async (t) => {
                 const first = t.comments.nodes[0];
+                let why = '';
                 // A thread with replies is a conversation: never delete it,
                 // only resolve it.
                 if (first && (t.comments.totalCount || 0) === 1) {
                   try {
+                    // The REST call wants the numeric comment id, not the
+                    // GraphQL node id — the node id is a 404 here.
                     await github.rest.pulls.deleteReviewComment({
-                      ...context.repo, comment_id: first.id,
+                      ...context.repo, comment_id: first.databaseId,
                     });
                     live.delete(`${t.path}:${t.line}`);
                     replaced++;
                     return true;
-                  } catch (e) { /* no delete right — try resolving */ }
+                  } catch (e) { why = `delete: ${e.message}`; }
                 }
                 try { await resolveThread(t); return true; }
                 catch (e) {
-                  core.warning(`cannot close a duplicate at ${t.path}:${t.line} — ${e.message}`);
+                  core.warning(`cannot close a duplicate at ${t.path}:${t.line} — ${e.message}${why ? `; ${why}` : ''}`);
                   return false;
                 }
               };
