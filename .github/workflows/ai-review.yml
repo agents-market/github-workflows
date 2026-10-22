@@ -560,7 +560,7 @@ jobs:
               // class marker existed.
               const classOfBody = (body) => {
                 const m = /<!--\s*am:class:([a-z0-9_-]+)\s*-->/i.exec(String(body || ''));
-                return m ? m[1].toUpperCase() : classOfText(body);
+                return m ? canon(m[1].toUpperCase()) : classOfText(body);
               };
               const resolveThread = async (t) => {
                 await github.graphql(
