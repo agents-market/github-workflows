@@ -134,6 +134,28 @@ Pin the full commit SHA, never a tag — a tag can move, a SHA cannot.
 Full guide: see [`CONTRIBUTING.md`](CONTRIBUTING.md). The target these examples
 are moving towards is in [`VISION.md`](VISION.md).
 
+## What the reader sees
+
+One comment per weakness, standing on the line the review gives this time.
+The model's line for a weakness is not stable — the same weakness comes back
+on a neighbouring line, sometimes fourteen lines away — so a comment is keyed
+by the weakness itself: the CWE id for the security audit, the category tag
+for the style review. A new run closes the comment that carried the same
+weakness and posts the fresh one. The pull request does not collect a second
+copy of every finding.
+
+Two weaknesses of one class in one file stay two comments, and a finding of
+another class never hides behind a comment that stands on its line.
+
+Closing a comment needs a token that is allowed to close it. The default
+`GITHUB_TOKEN` can delete a review comment but cannot resolve a thread, and a
+thread that carries replies is never deleted, only resolved. When a comment
+cannot be closed, the standing comment stays and no second one is added: one
+comment the reader can see beats two they cannot.
+
+A weakness the review does not report any more keeps its comment. The review
+does not take back a finding because one run missed it.
+
 ## Architecture (3-tier)
 
 ```
