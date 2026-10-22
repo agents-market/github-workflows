@@ -1,6 +1,6 @@
 ---
 name: code-review-security-audit
-version: 3.3.1
+version: 3.3.2
 description: |
   AI security audit of code diffs — structured findings (severity, line, CWE,
   fix), risk score and prioritized remediation recommendations.
