@@ -481,7 +481,7 @@ jobs:
                     pullRequest(number:$number){
                       reviewThreads(first:100){
                         nodes{ id isResolved isOutdated path line
-                               comments(first:1){ nodes{ body } } }
+                               comments(first:10){ totalCount nodes{ id body } } }
                       } } } }`,
                 { owner: context.repo.owner, repo: context.repo.repo, number: context.issue.number });
               if (!q || !q.repository) throw new Error('graphql returned no repository — nothing to sync');
@@ -498,18 +498,29 @@ jobs:
               });
               const inDiff = new Set(files.map(f => f.filename));
 
-              let resolved = 0;
+              let resolved = 0, replaced = 0;
               // One comment per (file, class). The model's line for a weakness
               // is not stable — the same weakness comes back on a neighbouring
               // line, sometimes fourteen lines away — and the comment key is
               // path:line, so every run added fresh comments and the fixture's
               // pull request collected 52 of them for the 11 planted
-              // weaknesses. Same class only: two different weaknesses of one
-              // class can share a file, and the surviving comment still names
-              // the class and the file.
-              const cweOfThread = (body) => {
-                const m = /CWE-\d+/i.exec(String(body || ''));
-                return m ? m[0].toUpperCase() : null;
+              // weaknesses. The class is the CWE id, or the category tag the
+              // style pipeline opens its description with ("[types] ...").
+              // Same class only: two different weaknesses of one class can
+              // share a file, and the surviving comment still names the class
+              // and the file.
+              const classOfText = (text) => {
+                const c = /CWE-\d+/i.exec(String(text || ''));
+                if (c) return c[0].toUpperCase();
+                const b2 = /\[([a-z][a-z_]{1,24})\]/.exec(String(text || ''));
+                return b2 ? b2[1].toUpperCase() : null;
+              };
+              // What the body carries wins: it is written by this step, so it is
+              // exact. The text is the fallback for threads posted before the
+              // class marker existed.
+              const classOfBody = (body) => {
+                const m = /<!--\s*am:class:([a-z0-9_-]+)\s*-->/i.exec(String(body || ''));
+                return m ? m[1].toUpperCase() : classOfText(body);
               };
               const resolveThread = async (t) => {
                 await github.graphql(
@@ -518,44 +529,73 @@ jobs:
                 live.delete(`${t.path}:${t.line}`);
                 resolved++;
               };
+              // The token may not be allowed to close a thread — the run of
+              // 2026-10-22 showed the default GITHUB_TOKEN refused to resolve
+              // with "Resource not accessible by integration", while a personal
+              // token closed the same threads. A thread that cannot be closed
+              // stays as it is, and the fresh comment for that class is not
+              // posted: a standing comment the reader can see beats two they
+              // cannot. But a comment that can go must go, or the review keeps
+              // claiming weaknesses that were fixed days ago.
+              const closeThread = async (t) => {
+                const first = t.comments.nodes[0];
+                // A thread with replies is a conversation: never delete it,
+                // only resolve it.
+                if (first && (t.comments.totalCount || 0) === 1) {
+                  try {
+                    await github.rest.pulls.deleteReviewComment({
+                      ...context.repo, comment_id: first.id,
+                    });
+                    live.delete(`${t.path}:${t.line}`);
+                    replaced++;
+                    return true;
+                  } catch (e) { /* no delete right — try resolving */ }
+                }
+                try { await resolveThread(t); return true; }
+                catch (e) {
+                  core.warning(`cannot close a duplicate at ${t.path}:${t.line} — ${e.message}`);
+                  return false;
+                }
+              };
               const byClass = new Map();
               for (const t of ours) {
                 if (t.isResolved || t.isOutdated || !inDiff.has(t.path)) continue;
-                const cwe = cweOfThread(t.comments.nodes[0] && t.comments.nodes[0].body);
-                if (!cwe) continue;
-                const key = `${t.path}::${cwe}`;
+                const cls = classOfBody(t.comments.nodes[0] && t.comments.nodes[0].body);
+                if (!cls) continue;
+                const key = `${t.path}::${cls}`;
                 const list = byClass.get(key) || [];
                 list.push(t);
                 byClass.set(key, list);
               }
 
+              // A thread whose file left the diff or whose line moved on says
+              // nothing about the code any more.
               for (const t of ours) {
                 if (!t.isResolved && (t.isOutdated || !inDiff.has(t.path))) {
-                  try { await resolveThread(t); }
-                  catch (e) { core.warning(`cannot resolve an outdated thread at ${t.path}:${t.line} — ${e.message}`); }
+                  await closeThread(t);
                 }
               }
 
               const emoji = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
-              let posted = 0, skipped = 0, twins = 0;
+              let posted = 0, skipped = 0;
+              const closedIds = new Set();
               for (const f of valid) {
-                const key = `${f.file}:${f.line}`;
-                if (live.has(key) || !inDiff.has(f.file)) { skipped++; continue; }
+                if (!inDiff.has(f.file)) { skipped++; continue; }
                 // Close what this class already carries on this file, then post
-                // the fresh one. If closing is not allowed, leave the standing
-                // comment alone: one old comment the reader can see beats two
-                // they cannot.
-                const cls = String(f.cwe || '').trim().toUpperCase();
+                // the fresh one on the line the model gives this time. If
+                // closing is not allowed, the standing comment stays and no
+                // second one is added.
+                const cls = String(f.cwe || '').trim().toUpperCase()
+                  || classOfText(f.message);
                 const dupes = cls ? (byClass.get(`${f.file}::${cls}`) || []) : [];
                 let closed = true;
                 for (const t of dupes) {
-                  try { await resolveThread(t); twins++; }
-                  catch (e) {
-                    closed = false;
-                    core.warning(`cannot resolve a duplicate at ${t.path}:${t.line} — ${e.message}`);
-                  }
+                  if (closedIds.has(t.id)) continue;
+                  if (await closeThread(t)) closedIds.add(t.id);
+                  else closed = false;
                 }
-                if (dupes.length && !closed) { skipped++; continue; }
+                const key = `${f.file}:${f.line}`;
+                if (live.has(key) || (dupes.length && !closed)) { skipped++; continue; }
                 let b = `${MARK}\n${emoji[f.severity] || '⚪'} **${String(f.severity || 'unknown').toUpperCase()}**`;
                 if (f.cwe) {
                   const id = String(f.cwe).trim().toUpperCase();
@@ -563,9 +603,13 @@ jobs:
                   b += ` \`${id}\``;
                   // The id is only worth printing if it was checked against the
                   // official catalogue; an unchecked code is worse than none.
-                  b += v ? ` — [${v.short || v.name}](${v.url})` : ` — not in the published catalogue`;
+                  b += v ? ` — [${v.short || v.name}](${v.url})` : ' — not in the published catalogue';
                 }
-                b += ` (conf ${Math.round((f.confidence || 0) * 100)}%): ${f.message || ''}`;
+                // The class tag is how the next run recognises this comment as
+                // the same weakness; it is a hidden marker, not reader text.
+                if (cls) b += `\n<!-- am:class:${cls} -->`;
+                const msg = String(f.message || '').replace(/^\s*\[[a-z][a-z_]{1,24}\]\s*/i, '');
+                b += ` (conf ${Math.round((f.confidence || 0) * 100)}%): ${msg}`;
                 if (f.recommendation) b += `\n\n💡 ${f.recommendation}`;
                 try {
                   await github.rest.pulls.createReviewComment({
@@ -578,7 +622,7 @@ jobs:
                   core.warning(`inline skip ${key}: ${e.message}`);
                 }
               }
-              core.info(`threads(${process.env.MARKER}) — ${posted} posted, ${resolved} resolved (${twins} duplicates), ${live.size} live, ${skipped} suppressed`);
+              core.info(`threads(${process.env.MARKER}) — ${posted} posted, ${resolved} resolved, ${replaced} replaced, ${live.size} live, ${skipped} suppressed`);
             } catch (e) {
               core.warning(`thread sync FAILED — inline threads not synced: ${e.message}`);
               await core.summary.addHeading('Inline thread sync failed', 3)

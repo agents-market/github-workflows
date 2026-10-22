@@ -1,5 +1,5 @@
 # name: style-review
-# version: 3.2.3
+# version: 3.3.0
 # description: AI-powered code style review for diffs. Identifies naming inconsistencies, missing types, unused exports, magic numbers, and codebase-pattern violations. Outputs structured findings with severity + line + category + fix suggestion + estimated impact. Free to download; a server call costs the tokens it uses.
 # price_usdc: 0
 # call_price_usdc: 0
@@ -158,13 +158,16 @@ stages:
         - `line` (integer — line number of the issue, NOT a range)
         - `severity` (critical | high | medium | low)
         - `category` (string — naming | types | exports | magic_numbers | comments)
-        - `description` (string ≤200 chars)
+        - `description` (string ≤200 chars — open it with the category in square
+          brackets, e.g. "[types] Exported `router` has no type annotation". The tag is
+          how the review recognises the same remark when the next run reports it on a
+          different line; without it the reader collects one comment per run.)
         - `fix_suggestion` (string ≤300 chars — concrete refactor)
         - `estimated_impact` (string — measurable improvement claim)
         - `confidence` (float 0.0-1.0)
 
       Example finding:
-        {"file": "src/api/users.ts", "line": 42, "severity": "high", "category": "naming", "description": "Variable name `usr_cnt` uses abbreviation; prefer `user_count`."}
+        {"file": "src/api/users.ts", "line": 42, "severity": "high", "category": "naming", "description": "[naming] Variable name `usr_cnt` uses abbreviation; prefer `user_count`."}
 
       IMPORTANT: Do NOT use `region` or `line_range` — emit explicit `file` (string) and `line` (integer) for each finding. Without `file`, the finding cannot be anchored to a PR comment.
 
@@ -176,7 +179,7 @@ stages:
             "line": 42,
             "severity": "high",
             "category": "naming",
-            "description": "Variable named data holds a single user record",
+            "description": "[naming] Variable named data holds a single user record",
             "fix_suggestion": "Rename to user",
             "estimated_impact": "A misleading name is read on every request to this handler",
             "confidence": 0.9
