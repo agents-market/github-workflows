@@ -56,7 +56,12 @@ permissions:
 env:
   # Pinned explicitly: `npx @agentsmarket/cli` without a version pulls
   # latest, and a release once shipped an unpublished dependency (E404).
-  CLI_VERSION: '0.12.5'
+  #
+  # 0.14.1, not 0.12.5: the price of a call is a v0.5 field, and 0.12.5 does
+  # not send it. Every pipeline published with it came back as
+  # `call_price_usdc: 0` — the catalogue said "the author charges nothing"
+  # because the publisher had never heard of the field.
+  CLI_VERSION: '0.14.1'
   # Job-level, because each `run:` is its own shell. Defining MARKER inside the
   # detect step meant the write-back step — which needs the same path — saw an
   # empty variable, `echo sha > ""` failed, and the step died before committing
