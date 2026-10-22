@@ -31,7 +31,7 @@ on:
         required: false
         type: string
       severity:
-        description: 'Override severity_threshold for both pipelines. Leave unset to keep each pipeline own default.'
+        description: 'Override severity_threshold for both pipelines. Leave unset to keep each pipeline own default. The security audit defaults to medium and that is the floor to keep. The floor is a hint to the model, not a filter, so the sets are not nested: a higher floor is a different sample, not a subset.'
         required: false
         type: string
       advisory:

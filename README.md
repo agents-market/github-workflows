@@ -37,14 +37,17 @@ Consumers (any GitHub repo) install pipelines from this repo via the marketplace
 Each subdirectory is one pipeline, carrying `pipeline.yaml`, a `README.md`
 generated from that spec, and a `test.yaml` describing expected output.
 
-| Pipeline | Input | Stages | Marketplace |
-|----------|-------|--------|-------------|
-| [`code-review-security-audit`](pipelines/code-review-security-audit/) | source diff | 3 | 2.0.2 |
-| [`style-review`](pipelines/style-review/) | source diff | 3 | 2.0.2 |
-| [`dependency-scanner`](pipelines/dependency-scanner/) | lockfile | 3 | 2.0.1 |
-| [`api-design-reviewer`](pipelines/api-design-reviewer/) | API spec | 3 | 2.0.1 |
-| [`documentation-generator`](pipelines/documentation-generator/) | source diff | 3 | 2.0.1 |
-| [`test-generator`](pipelines/test-generator/) | source diff | 3 | 2.0.1 |
+| Pipeline | Input | Stages |
+|----------|-------|--------|
+| [`code-review-security-audit`](pipelines/code-review-security-audit/) | source diff | 4 |
+| [`style-review`](pipelines/style-review/) | source diff | 3 |
+| [`dependency-scanner`](pipelines/dependency-scanner/) | lockfile | 3 |
+| [`api-design-reviewer`](pipelines/api-design-reviewer/) | API spec | 3 |
+| [`documentation-generator`](pipelines/documentation-generator/) | source diff | 3 |
+| [`test-generator`](pipelines/test-generator/) | source diff | 3 |
+
+Published versions live in the [marketplace](https://agentsmarket.world); the
+publish workflow bumps them and writes them back into `pipeline.yaml`.
 
 The first two came from the `agents-market/code-review` migration. The other
 four were promoted out of `agents-market/main/examples/` on 2026-10-17, after
@@ -52,10 +55,11 @@ every example was run end-to-end against a real MiniMax-M3: of 20, ten execute,
 and these four cover four different input domains. The examples that did not
 execute are withdrawn from the catalogue.
 
-**All six share one shape** — three stages, `structured_json` at every hop.
-What differs is the input, not the design. Treat them as one pattern with six
-front-ends until something genuinely multi-stage (a loop, a fan-out, a tool
-call) runs reliably enough to be canonical.
+**All six share one shape** — `structured_json` at every hop, three stages
+except the security audit, which reads its own first pass a second time to
+catch what that pass missed. What differs is the input, not the design. Treat
+them as one pattern with six front-ends until something genuinely multi-stage
+(a loop, a fan-out, a tool call) runs reliably enough to be canonical.
 
 Nothing executes `test.yaml` today: `agentsmarket pipeline test` is disabled in
 the CLI for 0.10.0. The files are written down so the expectations are

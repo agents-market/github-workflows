@@ -27,22 +27,20 @@ Given a unified diff, `code-review-security-audit` runs four stages:
 2. **`deep_review`** — LLM deep review for the business-logic flaws the scanner
    misses: IDOR, race conditions, prototype pollution in JS, pickle abuse in
    Python, signature replay in Solidity. MiniMax-M3.
-3. **`gap_review`** — second pass. It reads the first pass's findings and walks
-   the weakness classes looking for what the first pass did not report. It
-   repeats nothing: a weakness that is already reported is not reported again.
-   MiniMax-M3.
+3. **`gap_review`** — second pass. It reads the first pass's findings and looks
+   for what that pass did not report. It repeats nothing: an already reported
+   weakness is not reported again. MiniMax-M3.
 4. **`aggregate`** — `overall_risk_score` (0-10), prioritized recommendations,
    a markdown PR-comment report. Structured output.
 
-The consumer sees the union of the two review passes: the action collects
-findings from every stage that returns them, de-duplicated by file/line/class.
+The consumer sees the union of both passes: findings from every stage,
+de-duplicated by file/line/class.
 
 ## When to use
 
 - **Any PR before merge** in security-sensitive repos (auth, payments, infra)
 - **Greenfield projects** wanting a baseline review without a human
-- **Regulated industries** (finance, health) that need auditable findings with
-  CWE references + fix suggestions
+- **Regulated industries** that need auditable findings with CWE references
 
 The pipeline is **advisory** — it surfaces findings without blocking the merge.
 Pair it with `style-review` for a combined security + style check.
@@ -55,6 +53,11 @@ Pair it with `style-review` for a combined security + style check.
 | `language` | enum | `generic` | `typescript` / `javascript` / `python` / `rust` / `go` / `solidity` / `generic` |
 | `focus_area` | enum | `security` | `security` / `performance` / `style` / `all` |
 | `severity_threshold` | enum | `medium` | `low` / `medium` / `high` / `critical` — drop findings below this floor |
+
+`medium` is the default and the floor to keep: on this repository's fixture it
+found every planted weakness and invented nothing. The floor is a hint to the
+model, not a filter: `high` and `critical` still reported all eleven, and `low`
+lost three of them.
 
 ## Output envelope
 
@@ -113,29 +116,26 @@ The cost is one more model call per review.
 **`cwe_id` is drawn from the official catalogue, and `pattern_scan` no longer
 guesses one.** The scanner used to name a weakness class from memory — ids that
 were never checked against anything. Now `deep_review` picks the id from a
-closed list: the official MITRE catalogue, snapshot `2026-10-21`, 268 entries,
-embedded in the prompt. If nothing in the list describes the weakness,
-`cwe_id` is `null`; an id outside the list is impossible by construction. The
-scanner emits no id at all — it is a pre-filter. The list is generated from
-MITRE's own file by `scripts/build-cwe-catalogue.py`, not written by hand.
+closed list: the MITRE catalogue, snapshot `2026-10-21`, 268 entries, embedded
+in the prompt. If nothing in the list describes the weakness, `cwe_id` is
+`null`; an id outside the list is impossible by construction. The scanner emits
+no id at all — it is a pre-filter.
 
 Verifying the ids is still the consumer's job: a closed list removes invented
 ids, it does not prove an id is the *right* one. The reference workflow here
-checks every id against the same list — read out of the
-installed pipeline, so the check works anywhere the workflow is copied — and
-prints the official name and the MITRE link next to the finding.
+checks every id against the same list and prints the official name and the
+MITRE link next to the finding.
 
 ## Breaking change in 3.0.0
 
 **The pipeline no longer counts findings.** `summary` is now
-`{overall_risk_score}` and nothing else; `pattern_scan` returns `candidates`,
-not `findings`. A model asked to count a list it is writing gets it wrong, and
-a wrong count is worse than no count. Count the array yourself, or read
-`findings_count_json` from the action. **Every finding also carries the file it
-is in** — a finding with a line but no file is dropped, because the path turns
-a line into a review comment.
-silently, and without counting it. On this repository that meant the security
-audit posted no inline comments at all, ever.
+`{overall_risk_score}`; `pattern_scan` returns `candidates`, not `findings`.
+A model asked to count a list it is writing gets it wrong, and a wrong count is
+worse than no count — count the array yourself, or read `findings_count_json`
+from the action. **Every finding also carries the file it is in**: before 3.0.0
+the stages did not ask for it, and the consumer dropped every finding with a
+line but no file — silently, and without counting it. On this repository that
+meant the security audit posted no inline comments at all, ever.
 
 ## Installation
 
@@ -173,8 +173,7 @@ provider can be selected per stage without editing the pipeline file.
 ## Real-world findings (live demo on web3eco/blockchain PR #42)
 
 - **CWE-89 SQL injection** (critical, 0.95) — userId interpolated into a SELECT
-- **CWE-94 code coverage bypass** (high, 0.98) — a probe file with
-  `coverage.exclude` read as deliberate evasion
+- **CWE-94 code coverage bypass** (high, 0.98) — `coverage.exclude` read as evasion
 - **CWE-1357 CI supply-chain** (medium, 0.85) — a workflow forwarding secrets
 
 The second pass buys the recall: on this repository's fixture one pass finds 8

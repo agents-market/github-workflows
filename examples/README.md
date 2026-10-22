@@ -76,8 +76,32 @@ to set them:
 |---|---|---|
 | `pipeline_version` | `3.1.0` | Which published version to install |
 | `focus_area` | per pipeline | Security pipeline: `security`. Style pipeline: `all` |
-| `severity` | per pipeline | Minimum severity reported |
+| `severity` | per pipeline | Minimum severity reported — read the note below |
 | `advisory` | `'false'` | `'true'` reports findings without failing the job |
+
+### Which severity floor to use
+
+The security audit's own default is `medium`, and it is the one to keep: on
+this repository's fixture it found every planted weakness and invented
+nothing.
+
+The floor is a **hint to the model, not a filter**. The stage is told to drop
+findings below it and to report the dropped ones separately; the model decides
+what "below" means. Three consequences you can plan around:
+
+- **The sets are not nested.** A higher floor is not a subset of a lower one.
+  The severity is the model's own rating, and it moves between runs.
+- **Raising the floor does not reliably shrink the output.** On the fixture
+  `high` and `critical` still reported all eleven planted weaknesses.
+- **Lowering the floor can lose real weaknesses.** At `low` the audit dropped
+  the open redirect, the prototype pollution and the weak crypto — and the
+  second pass then found nothing to replace them.
+
+So: use **`high`** when the review is a *gate* and you want to see what the
+model rates serious, and expect the set to change rather than to shrink. Use
+**`low`** for a first look at unfamiliar code, never as a gate. Use
+**`critical`** as a last-resort gate — it is a stricter hint to the same model,
+not a guarantee.
 
 ## What is available
 
