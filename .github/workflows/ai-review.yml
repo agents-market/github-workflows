@@ -490,8 +490,30 @@ jobs:
                 const first = t.comments.nodes[0];
                 return first && typeof first.body === 'string' && first.body.includes(MARK);
               });
-              const live = new Set(ours.filter(t => !t.isResolved && !t.isOutdated)
-                .map(t => `${t.path}:${t.line}`));
+              // Live comments of this pipeline, keyed by where they stand. One
+              // place can hold several comments — two weaknesses of one class
+              // in one file are two comments — so the key holds a list, and a
+              // comment of another class on a line never hides a finding.
+              const live = new Map();
+              for (const t of ours) {
+                if (t.isResolved || t.isOutdated) continue;
+                const k = `${t.path}:${t.line}`;
+                const list = live.get(k) || [];
+                list.push(t);
+                live.set(k, list);
+              }
+              const liveCount = () => {
+                let n = 0;
+                for (const list of live.values()) n += list.length;
+                return n;
+              };
+              const forget = (t) => {
+                const k = `${t.path}:${t.line}`;
+                const list = live.get(k) || [];
+                const i = list.findIndex(x => x.id === t.id);
+                if (i >= 0) list.splice(i, 1);
+                if (!list.length) live.delete(k);
+              };
 
               const { data: files } = await github.rest.pulls.listFiles({
                 ...context.repo, pull_number: context.issue.number, per_page: 100,
@@ -512,7 +534,12 @@ jobs:
               const classOfText = (text) => {
                 const c = /CWE-\d+/i.exec(String(text || ''));
                 if (c) return c[0].toUpperCase();
-                const b2 = /\[([a-z][a-z_]{1,24})\]/.exec(String(text || ''));
+                const v = /CVE-\d{4}-\d+/i.exec(String(text || ''));
+                if (v) return v[0].toUpperCase();
+                // The category tag the style pipeline opens its description
+                // with. Anchored at the start: a bracket in the middle of a
+                // sentence is prose, not a class.
+                const b2 = /^\s*\[([a-z][a-z_]{1,24})\]/i.exec(String(text || ''));
                 return b2 ? b2[1].toUpperCase() : null;
               };
               // What the body carries wins: it is written by this step, so it is
@@ -526,7 +553,7 @@ jobs:
                 await github.graphql(
                   `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }`,
                   { id: t.id });
-                live.delete(`${t.path}:${t.line}`);
+                forget(t);
                 resolved++;
               };
               // The token may not be allowed to close a thread — the run of
@@ -549,7 +576,7 @@ jobs:
                     await github.rest.pulls.deleteReviewComment({
                       ...context.repo, comment_id: first.databaseId,
                     });
-                    live.delete(`${t.path}:${t.line}`);
+                    forget(t);
                     replaced++;
                     return true;
                   } catch (e) { why = `delete: ${e.message}`; }
@@ -598,7 +625,18 @@ jobs:
                   else closed = false;
                 }
                 const key = `${f.file}:${f.line}`;
-                if (live.has(key) || (dupes.length && !closed)) { skipped++; continue; }
+                const here = live.get(key) || [];
+                // A comment of another class on this line is a different
+                // weakness and must not hide this finding: the run of
+                // 2026-10-22 lost the SSRF finding because a comment of
+                // another class stood on the same line. A comment of this
+                // class was closed above; a comment with no class cannot be
+                // told apart from this finding, so it stays and nothing is
+                // added.
+                const hidden = cls
+                  ? here.some(t => classOfBody(t.comments.nodes[0] && t.comments.nodes[0].body) === cls)
+                  : here.length > 0;
+                if (hidden || (dupes.length && !closed)) { skipped++; continue; }
                 let b = `${MARK}\n${emoji[f.severity] || '⚪'} **${String(f.severity || 'unknown').toUpperCase()}**`;
                 if (f.cwe) {
                   const id = String(f.cwe).trim().toUpperCase();
@@ -620,12 +658,14 @@ jobs:
                     commit_id: context.payload.pull_request.head.sha,
                     path: f.file, line: f.line, side: 'RIGHT', body: b,
                   });
-                  posted++; live.add(key);
+                  posted++;
+                  live.set(key, [...here, { id: `new-${posted}`, path: f.file,
+                    line: f.line, comments: { nodes: [{ body: b }] } }]);
                 } catch (e) {
                   core.warning(`inline skip ${key}: ${e.message}`);
                 }
               }
-              core.info(`threads(${process.env.MARKER}) — ${posted} posted, ${resolved} resolved, ${replaced} replaced, ${live.size} live, ${skipped} suppressed`);
+              core.info(`threads(${process.env.MARKER}) — ${posted} posted, ${resolved} resolved, ${replaced} replaced, ${liveCount()} live, ${skipped} suppressed`);
             } catch (e) {
               core.warning(`thread sync FAILED — inline threads not synced: ${e.message}`);
               await core.summary.addHeading('Inline thread sync failed', 3)
