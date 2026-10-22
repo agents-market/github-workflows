@@ -6,13 +6,13 @@ description: |
   missing types, unused exports, magic numbers, and codebase-pattern violations.
   Outputs structured findings with severity + line + category + fix suggestion
   + estimated impact. Vertical wedge expansion: code style review as paid AI
-  agent service at $0.001/call.
+  Free to download; a server call costs the tokens it uses.
 license: MIT
 author: agentsmarket-team
 price_usdc: 0
-call_price_usdc: 1000
+call_price_usdc: 0
 tags: [style, code-review, vertical-wedge]
-public_preview: AI code style review of diffs. Structured findings (severity + category + fix + impact), aggregate style score 0-10, prioritized refactors. $0.001/call.
+public_preview: AI code style review of diffs. Structured findings (severity + category + fix + impact), aggregate style score 0-10, prioritized refactors. Free to download; a call costs the tokens it uses.
 ---
 
 # style-review

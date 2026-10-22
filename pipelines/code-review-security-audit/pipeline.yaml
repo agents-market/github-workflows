@@ -1,13 +1,18 @@
 # name: code-review-security-audit
 # version: 3.3.0
-# description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate risk score, and prioritized remediation recommendations. Vertical wedge: code review as paid AI agent service at $0.001/call.
+# description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate risk score, and prioritized remediation recommendations. Free to download; a server call costs the tokens it uses.
 # price_usdc: 0
-# call_price_usdc: 1000
+# call_price_usdc: 0
 # The header is the CLI's convention and the number has to stand alone: a
 # trailing comment here makes the publisher read `1000  # ...` as the value,
 # and the price of a call silently becomes zero.
 # tags: ["security", "code-review", "vertical-wedge"]
-# public_preview: AI security review of code diffs. Structured findings (severity + CWE + fix), aggregate risk score, prioritized recommendations. $0.001/call.
+# public_preview: AI security review of code diffs. Structured findings (severity + CWE + fix), aggregate risk score, prioritized recommendations. Free to download; a call costs the tokens it uses.
+#
+# The price of a call is 0 for now, not by choice. The server refuses a call
+# price above 1000x the download price, so a pipeline that is free to
+# download can only have a free call. The author's fee is 1000 micro-USDC
+# and goes back to 1000 as soon as that bound is lifted.
 #
 # Reference example for pitch deck / customer demo. NOT a deployment — caller MUST
 # supply executor_url via CLI flag or server routing config (runtime concept).

@@ -4,13 +4,13 @@ version: 3.3.0
 description: |
   AI security audit of code diffs — structured findings (severity, line, CWE,
   fix), risk score and prioritized remediation recommendations.
-  Vertical wedge: code review as paid AI agent service at $0.001/call.
+  Free to download; a server call costs the tokens it uses.
 license: MIT
 author: agentsmarket-team
 price_usdc: 0
-call_price_usdc: 1000
+call_price_usdc: 0
 tags: [security, code-review, vertical-wedge]
-public_preview: AI security review of code diffs. Structured findings (severity + CWE + fix), risk score, prioritized recommendations. $0.001/call.
+public_preview: AI security review of code diffs. Structured findings (severity + CWE + fix), risk score, prioritized recommendations. Free to download; a call costs the tokens it uses.
 ---
 
 # code-review-security-audit
@@ -131,9 +131,9 @@ prints the official name and the MITRE link next to the finding.
 `{overall_risk_score}` and nothing else; `pattern_scan` returns `candidates`,
 not `findings`. A model asked to count a list it is writing gets it wrong, and
 a wrong count is worse than no count. Count the array yourself, or read
-`findings_count_json` from the action, which computes it in code. **Every
-finding also carries the file it is in** — a finding with a line but no file is
-dropped, because the path turns a line into a review comment.
+`findings_count_json` from the action. **Every finding also carries the file it
+is in** — a finding with a line but no file is dropped, because the path turns
+a line into a review comment.
 silently, and without counting it. On this repository that meant the security
 audit posted no inline comments at all, ever.
 
@@ -175,17 +175,16 @@ provider can be selected per stage without editing the pipeline file.
 - **CWE-89 SQL injection** (critical, 0.95) — userId interpolated into a SELECT
 - **CWE-94 code coverage bypass** (high, 0.98) — a probe file with
   `coverage.exclude` read as deliberate evasion
-- **CWE-1357 CI supply-chain** (medium, 0.85) — a reusable workflow forwarding
-  secrets
+- **CWE-1357 CI supply-chain** (medium, 0.85) — a workflow forwarding secrets
 
-Cost: ~$0.018 USDC per call at three LLM stages; 3.3.0 adds a fourth, so budget
-~$0.035 per review. The second pass buys the recall — on this repository's
-fixture one pass finds 8 of 11 planted weaknesses, the pair finds 11.
+The second pass buys the recall: on this repository's fixture one pass finds 8
+of 11 planted weaknesses, the pair finds 11.
 
 ## Pricing
 
-`$0.001 USDC` per invocation. Default ceiling `$1.00` per run (configurable
-via `cost.max_per_run_usdc`).
+Free to download. On the server, a call costs the tokens the review uses —
+about $0.035 at four stages. The consumer's spend ceiling defaults to $1.00 per
+run (`cost.max_per_run_usdc`).
 
 ## License
 
