@@ -216,6 +216,12 @@ jobs:
 
           for SLUG in "${PIPELINES[@]}"; do
             echo "::group::Validating $SLUG"
+            # Set here, not inherited from the version loop above: that loop
+            # leaves FILE pointing at the LAST slug, so with two pipelines
+            # changed in one push the catalogue check read one pipeline's
+            # prompt against another's snapshot — and failed on a file that
+            # was never wrong.
+            FILE="pipelines/$SLUG/pipeline.yaml"
             [ -f "pipelines/$SLUG/README.md" ] || {
               echo "::error::pipelines/$SLUG/README.md is missing — publish needs it for the listing"
               exit 1
