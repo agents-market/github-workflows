@@ -21,7 +21,7 @@ agents-market vertical-wedge expansion path (anchored by A10 outreach).
 ## What it does
 
 Given a unified diff and a few configuration knobs, `code-review-security-audit`
-runs a 3-stage AI pipeline:
+runs a 4-stage AI pipeline:
 
 1. **`pattern_scan`** — cheap pre-filter on obvious issue classes: OWASP Top 10
    (injection, XSS, SSRF, broken auth), hardcoded secrets, insecure crypto,
@@ -29,9 +29,17 @@ runs a 3-stage AI pipeline:
 2. **`deep_review`** — LLM deep review catches business-logic flaws the scanner
    misses: IDOR, race conditions, prototype pollution in JS, pickle abuse in
    Python, signature replay in Solidity, etc. Uses MiniMax-M3 for depth.
-3. **`aggregate`** — compute counts + `overall_risk_score` (0-10), emit
+3. **`gap_review`** — second pass. It reads the first pass's findings and walks
+   the weakness classes looking for what the first pass did not report. It
+   repeats nothing: a weakness that is already reported is not reported again.
+   Uses MiniMax-M3.
+4. **`aggregate`** — compute counts + `overall_risk_score` (0-10), emit
    prioritized recommendations + markdown PR-comment report. Uses M5
    `output_schema` for guaranteed structured output.
+
+The consumer sees the union of the two review passes: the action collects
+findings from every stage that returns them and de-duplicates by
+file/line/class.
 
 ## When to use
 
@@ -81,6 +89,33 @@ the merge. Pair it with `style-review` for a combined security + style check.
 
 Every finding includes `file` + `line` + `cwe_id` (when applicable) so the
 wrapper can post inline PR comments at the right location with CWE references.
+
+## What changed in 3.3.0
+
+**A second review pass, told what the first one found.**
+
+One pass found eight of the eleven weaknesses planted in this repository's
+fixture, and which eight changed from run to run: a single review is a sample,
+not a census. The pipeline now makes a second pass. It reads the first pass's
+output (`$stages.deep_review.output`) and is asked for the gaps only — the
+weaknesses the first pass did not report, and nothing else.
+
+Measured on the fixture (`agents-market/ai-review-fixture`, 11 planted
+weaknesses): the first pass finds 8, the second pass finds the missing 3
+(open redirect, prototype pollution, ReDoS), and the union covers 11 of 11.
+In the best runs the union is exactly the eleven planted weaknesses — no
+duplicates, nothing extra. In the worst, the second pass adds a finding the
+reader does not need; it never removes one.
+
+Two rules in the second pass's prompt keep it from repeating itself:
+
+- a weakness is the same weakness when it is the same code, even under a
+  different CWE id or a different line;
+- report a weakness only where you can point at the line where something wrong
+  happens. The absence of a control is not a finding — this pipeline finds
+  bugs in the code, it is not a policy checker.
+
+The cost is one more model call per review.
 
 ## What changed in 3.2.0
 
@@ -180,6 +215,9 @@ provider can be selected per stage without editing the pipeline file.
   forwarding secrets to shared workflow identified as architectural risk
 
 Total cost: ~$0.018 USDC per call (3 LLM stages on MiniMax-M2.7 + M3 + M3).
+Since 3.3.0 there is a fourth stage, so the cost is roughly double: budget
+~$0.035 per review. The second pass buys the recall: on this repository's
+fixture, one pass finds 8 of 11 planted weaknesses and the pair finds 11.
 
 ## Pricing
 

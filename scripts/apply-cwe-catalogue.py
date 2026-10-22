@@ -7,18 +7,31 @@
                   MITRE catalogue, snapshot 2026-10-21, 268 entries. If nothing
                   in the list describes the issue, `cwe_id` is null. Inventing
                   an id is no longer possible by construction.
+  gap_review    — the same closed list. The second pass names classes too, and
+                  a second copy of the list that drifts is a second copy of the
+                  defect.
+
+Every prompt that asks for a `cwe_id` gets the list. The script strips the
+previous copy first, so running it twice changes nothing.
 
 Run from the repo root:  python3 scripts/apply-cwe-catalogue.py
 """
 import csv
 import pathlib
-import re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PIPE = ROOT / "pipelines/code-review-security-audit/pipeline.yaml"
 CATALOGUE = ROOT / "pipelines/code-review-security-audit/cwe-catalogue.csv"
 
 SNAPSHOT = "2026-10-21"
+
+# The paragraph that says "every finding carries a cwe_id". The catalogue goes
+# right after it, in every prompt that contains it.
+ANCHOR = (
+    "      Every finding also carries a `cwe_id` from the catalogue below. Choose the\n"
+    "      entry whose name describes the weakness; `null` when the list has nothing\n"
+    "      that fits.\n"
+)
 
 
 def catalogue_block() -> str:
@@ -39,53 +52,38 @@ def catalogue_block() -> str:
     return "\n".join("      " + l if l else "" for l in head + lines)
 
 
-def sub(text: str, old: str, new: str, count: int = 1) -> str:
-    assert text.count(old) == count, f"ожидалось {count}, найдено {text.count(old)}: {old[:70]!r}"
-    return text.replace(old, new)
-
-
-def sub_first(text: str, old: str, new: str) -> str:
-    """Replace the first occurrence only. The two stages carry the same example
-    JSON, and only the scanner's copy loses the id."""
-    assert old in text, f"не найдено: {old[:70]!r}"
-    return text.replace(old, new, 1)
+def strip_catalogue(text: str) -> str:
+    """Remove every catalogue block, wherever it sits."""
+    lines = text.split("\n")
+    out: list[str] = []
+    i, n = 0, len(lines)
+    while i < n:
+        if lines[i].strip().startswith("CWE catalogue — "):
+            i += 1
+            # the header is followed by the "Pick the id" paragraph and a blank
+            while i < n and not lines[i].strip().startswith("CWE-"):
+                i += 1
+            # then the id lines, one per weakness class
+            while i < n and lines[i].strip().startswith("CWE-"):
+                i += 1
+            # and one blank line that separated the block from what follows
+            if i < n and not lines[i].strip():
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
 
 
 def main() -> None:
-    t = PIPE.read_text()
+    t = strip_catalogue(PIPE.read_text())
 
-    # --- pattern_scan: cwe_id goes away ---
-    t = sub(
-        t,
-        "        - `cwe_id` (string CWE id e.g. \"CWE-89\", or null)\n",
-        "",
-    )
-    t = sub_first(
-        t,
-        '            "fix_suggestion": "Replace exec() with execFile() and pass arguments as an array",\n'
-        '            "cwe_id": "CWE-78",\n'
-        '            "confidence": 0.9\n',
-        '            "fix_suggestion": "Replace exec() with execFile() and pass arguments as an array",\n'
-        '            "confidence": 0.9\n',
-    )
-
-    # --- deep_review: the closed list ---
-    t = sub(
-        t,
-        "      Every finding carries the `file` it is in. A finding without a file never\n"
-        "      reaches the reader.\n",
-        "      Every finding carries the `file` it is in. A finding without a file never\n"
-        "      reaches the reader.\n\n"
-        "      Every finding also carries a `cwe_id` from the catalogue below. Choose the\n"
-        "      entry whose name describes the weakness; `null` when the list has nothing\n"
-        "      that fits. The scanner's candidates carry no id — you assign it, and only\n"
-        "      you know what the issue actually is.\n\n"
-        + catalogue_block()
-        + "\n",
-    )
+    assert t.count(ANCHOR) >= 1, "в промптах нет строки про cwe_id"
+    t = t.replace(ANCHOR, ANCHOR + "\n" + catalogue_block() + "\n")
 
     PIPE.write_text(t)
-    print(f"  каталог встроен: {len(list(csv.DictReader(CATALOGUE.open())))} записей")
+    count = len(list(csv.DictReader(CATALOGUE.open(encoding="utf-8"))))
+    print(f"  каталог встроен: {count} записей × {t.count(ANCHOR)} промпт(ов)")
 
 
 if __name__ == "__main__":
