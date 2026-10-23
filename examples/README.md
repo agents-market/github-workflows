@@ -91,6 +91,17 @@ to set them:
 | `severity` | per pipeline | Minimum severity reported — read the note below |
 | `advisory` | `'false'` | `'true'` reports findings without failing the job |
 
+## 4. The same review on GitLab
+
+GitLab does not run GitHub Actions, so the wiring there is its own file:
+[`workflows/gitlab-code-review.yml`](../workflows/gitlab-code-review.yml).
+Same two pipelines, same published runtime, same finding on the same merge
+request — the difference is the API on the other side.
+
+Two CI variables instead of one secret: `MINIMAX_API_KEY` and `GITLAB_TOKEN`
+(a project access token with the `api` scope). The findings land as one note
+per pipeline, updated in place.
+
 ### Which severity floor to use
 
 The security audit's own default is `medium`, and it is the one to keep: on

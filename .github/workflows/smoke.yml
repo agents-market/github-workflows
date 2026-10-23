@@ -105,6 +105,15 @@ jobs:
             || { echo "::error::the example names $REF, which does not resolve in agents-market/github-workflows"; exit 1; }
           echo "example resolves: $REF"
 
+      # The GitLab side has its own file and its own reader, and nothing
+      # else in this repository exercises them: a note that renders "undefined"
+      # where the file name belongs is invisible until a client runs it.
+      - name: The GitLab review renders what it says
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund @agentsmarket/pipeline-runtime@latest yaml
+          node scripts/check-gitlab-review.mjs
+
       - uses: actions/setup-node@v5
         with:
           node-version: 22

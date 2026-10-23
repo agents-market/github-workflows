@@ -1,0 +1,49 @@
+# Copy this file to `.gitlab-ci.yml` in your GitLab repository, add two CI/CD
+# variables, and every merge request is reviewed by two pipelines: a security
+# audit and a style review. The result lands on the merge request itself — one
+# note per pipeline, updated in place on every push, not a new note each time.
+#
+# The two variables (Settings → CI/CD → Variables, both masked):
+#
+#   MINIMAX_API_KEY   a MiniMax API key
+#   GITLAB_TOKEN      a project access token with the `api` scope
+#                     (Settings → Access Tokens; a personal token works too,
+#                     but a project token dies with the project)
+#
+# Nothing else is needed: no image to build, no identity to create, no
+# lockfile to understand.
+#
+# The script that runs the review is fetched from our repository. `@latest` is
+# the newest revision that passed the consumer smoke test — it moves, and that
+# is the point: a fix we publish reaches you without a bump. If you would
+# rather your review did not move under you, pin a commit:
+#
+#   gh api repos/agents-market/github-workflows/git/ref/tags/latest --jq .object.sha
+#
+# The two pipelines are installed at their current versions. To pin them, add
+# `agentsmarket pipeline install <slug>@<version>` to the install step — one
+# version each, because the two are released on their own schedule.
+stages:
+  - review
+
+ai-review:
+  image: node:22
+  stage: review
+  # Only merge requests: a pipeline on a branch has no merge request to post to.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    AI_REVIEW_REF: latest
+  script:
+    - npm install -g @agentsmarket/cli@latest
+    # A working directory of its own: the runtime is a Node package, and a
+    # global install is not on the path an ES module resolves bare names from.
+    - mkdir -p /tmp/aireview && cd /tmp/aireview
+    - npm init -y >/dev/null && npm install --no-save --no-audit --no-fund @agentsmarket/pipeline-runtime@latest yaml
+    # A throwaway identity: the marketplace install needs one, and this is not
+    # the identity you want in your repository.
+    - agentsmarket init
+    - agentsmarket pipeline install code-review-security-audit
+    - agentsmarket pipeline install style-review
+    - curl -fsSL "https://raw.githubusercontent.com/agents-market/github-workflows/${AI_REVIEW_REF}/scripts/gitlab-review.mjs" -o /tmp/aireview/gitlab-review.mjs
+    - node /tmp/aireview/gitlab-review.mjs

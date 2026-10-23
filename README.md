@@ -71,7 +71,6 @@ reviewable, not because CI checks them.
 adopters paste. Copy it to `.github/workflows/ai-review.yml` in your repo, set
 `MINIMAX_API_KEY`, and every pull request is reviewed by two pipelines: a
 security audit and a style review. Nothing else to install, nothing to choose.
-
 It names the reusable workflow at `@latest` — a tag we move to the newest
 revision that passed the consumer smoke test. A fix we publish therefore
 reaches the people who pasted it without a pin bump. If you would rather your
@@ -99,6 +98,19 @@ else. [`examples/README.md`](examples/README.md) has one command that runs a
 pipeline and one workflow file that reviews every PR — both copy-pasteable with
 no editing. The workflow file on its own is
 [`workflows/ai-code-review.yml`](workflows/ai-code-review.yml).
+
+### GitLab
+
+GitLab does not run GitHub Actions, so the wiring there is its own:
+[`workflows/gitlab-code-review.yml`](workflows/gitlab-code-review.yml) is the
+same file for `.gitlab-ci.yml`, with the same two pipelines and the same
+published runtime behind it. Two CI variables instead of one secret — a
+MiniMax key and a GitLab token — and the findings land on the merge request as
+one note per pipeline, updated in place.
+
+The review script is [`scripts/gitlab-review.mjs`](scripts/gitlab-review.mjs).
+Its calls to the GitLab API were exercised against a stand-in server rather
+than a live GitLab, so the first run is the one that proves the API side.
 
 ### `.github/workflows/publish.yml`
 
