@@ -33,27 +33,39 @@ name: AI Code Review
 
 on:
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   review:
-    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<full-commit-sha>
-    with:
-      pipeline_version: '3.1.0'
+    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@latest
     secrets:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
-Pin a **full commit SHA**, never a tag: a tag can move under you, a SHA cannot.
+That is the whole file, unchanged:
+[`workflows/ai-code-review.yml`](../workflows/ai-code-review.yml).
 
-Pin `pipeline_version` too. Left unset it installs whatever is current, which is
-what the repository owning the pipelines wants — it can fix and republish one —
-and is the wrong default for you: a PR check that moves under you is not a
-check. Bump it deliberately.
+`@latest` is a tag we move to the newest revision that passed the consumer
+smoke test. It works the moment you paste it, and a fix we publish still
+reaches you without a pin bump. If you would rather your check not move under
+you, pin the commit instead:
+
+```bash
+gh api repos/agents-market/github-workflows/git/ref/tags/latest --jq .object.sha
+```
+
+The `permissions` block is not decoration. A reusable workflow can only narrow
+the permissions it is given, so a caller that does not grant `pull-requests:
+write` gets a review that runs and cannot post.
+
+The two pipelines are installed at their current versions. To pin them, add
+`audit_version` and `style_version` under `with:` — one each, because the two
+are released on their own schedule and a version that fits one of them does
+not exist for the other.
 
 This reviews with `code-review-security-audit` and `style-review`, and **fails
 the check when a pipeline fails** rather than reporting success it did not
@@ -66,15 +78,15 @@ The reusable workflow takes optional inputs, each with a default. You never have
 to set them:
 
 ```yaml
-    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<sha>
+    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@latest
     with:
-      pipeline_version: '3.1.0'
       advisory: 'true'
 ```
 
 | Input | Default | What it changes |
 |---|---|---|
-| `pipeline_version` | `3.1.0` | Which published version to install |
+| `audit_version` | current | Which published version of the security audit to install |
+| `style_version` | current | Which published version of the style review to install |
 | `focus_area` | per pipeline | Security pipeline: `security`. Style pipeline: `all` |
 | `severity` | per pipeline | Minimum severity reported — read the note below |
 | `advisory` | `'false'` | `'true'` reports findings without failing the job |

@@ -157,6 +157,38 @@ error that named neither the repository nor the ref. Re-cut on 2026-10-16; see
 
 A SHA turns "the action moved under me" into a deliberate, reviewable bump.
 
+## Pinning the review workflow
+
+The action is pinned by SHA. The review workflow is not, and the difference is
+deliberate.
+
+`workflows/ai-code-review.yml` — the file adopters paste — calls the reusable
+workflow at `@latest`:
+
+```yaml
+uses: agents-market/github-workflows/.github/workflows/ai-review.yml@latest
+```
+
+`latest` is a tag we move to the newest revision that passed the consumer smoke
+test. A pin cannot do that job: nobody outside this repository knows our commit
+SHA, so an example with a SHA in it is not an example, it is an editing task.
+The tag keeps the example pasteable and keeps fixes reaching the people who
+pasted it.
+
+The tag moves by machinery, not by memory: `.github/workflows/tag-latest.yml`
+waits for the smoke test to pass and moves `latest` to the revision that
+passed. A promise has to be kept by something.
+
+For a check that must not move under you, pin the commit instead:
+
+```bash
+gh api repos/agents-market/github-workflows/git/ref/tags/latest --jq .object.sha
+```
+
+The same rule applies to the two pipeline versions, which are separate inputs
+(`audit_version`, `style_version`) because the two pipelines are released on
+their own schedule.
+
 Two related traps when writing workflows by hand — both cost a round-trip on
 [PR #3](https://github.com/agents-market/github-workflows/pull/3):
 

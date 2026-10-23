@@ -65,16 +65,25 @@ Nothing executes `test.yaml` today: `agentsmarket pipeline test` is disabled in
 the CLI for 0.10.0. The files are written down so the expectations are
 reviewable, not because CI checks them.
 
-### `workflows/` — reference GitHub Actions workflows
+### `workflows/` — the consumer-side wiring
 
-`workflows/ai-code-review.yml` is the consumer-side wiring. Copy it to
-`.github/workflows/ai-review.yml` in your repo, set `MINIMAX_API_KEY`, and pin
-`agents-market/github-workflows/.github/workflows/ai-review.yml` to a full
-commit SHA. The review logic lives in that one file, so a fix ships here once
-and every consumer gets it on the next pin bump.
+[`workflows/ai-code-review.yml`](workflows/ai-code-review.yml) is the file
+adopters paste. Copy it to `.github/workflows/ai-review.yml` in your repo, set
+`MINIMAX_API_KEY`, and every pull request is reviewed by two pipelines: a
+security audit and a style review. Nothing else to install, nothing to choose.
 
-Inputs are optional. `pipeline_version` is unset by default, which installs
-whatever version is current; `focus_area` and
+It names the reusable workflow at `@latest` — a tag we move to the newest
+revision that passed the consumer smoke test. A fix we publish therefore
+reaches the people who pasted it without a pin bump. If you would rather your
+check not move under you, pin the commit instead:
+
+```bash
+gh api repos/agents-market/github-workflows/git/ref/tags/latest --jq .object.sha
+```
+
+Inputs are optional. `audit_version` and `style_version` are unset by default,
+which installs whatever version is current — one input each, because the two
+pipelines are released on their own schedule; `focus_area` and
 `severity` are left unset on purpose, so each pipeline keeps its own default
 (`security` for the audit, `all` for style). `advisory` is a string, `"false"`
 by default: a failing pipeline fails the job, so a broken review is visible
@@ -88,8 +97,8 @@ For wiring a pipeline directly rather than through the review workflow, see
 Start here if you want to see something working before you understand anything
 else. [`examples/README.md`](examples/README.md) has one command that runs a
 pipeline and one workflow file that reviews every PR — both copy-pasteable with
-no editing. [`examples/github-actions/ai-review.yml`](examples/github-actions/ai-review.yml)
-is the workflow file on its own.
+no editing. The workflow file on its own is
+[`workflows/ai-code-review.yml`](workflows/ai-code-review.yml).
 
 ### `.github/workflows/publish.yml`
 
@@ -117,19 +126,30 @@ npx @agentsmarket/cli pipeline call style-review@3.1.0 --local \
 > is what a price is. The smoke test runs both halves on every push, so neither
 > can change quietly.
 
-In your own GitHub workflow, one file and five lines. Every option has a
-working default, so there is nothing to choose:
+In your own GitHub workflow, one file and five lines of configuration — the
+rest is the trigger and the permissions a reusable workflow needs. Every option
+has a working default, so there is nothing to choose:
 
 ```yaml
 # .github/workflows/ai-review.yml
 jobs:
   review:
-    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<full-commit-sha>
+    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@latest
     secrets:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
-Pin the full commit SHA, never a tag — a tag can move, a SHA cannot.
+`@latest` is a tag we move to the newest revision that passed the consumer
+smoke test, so this works the moment it is pasted, and it keeps working when
+we fix something. Pin the commit instead if you would rather your check did
+not move under you:
+
+```bash
+gh api repos/agents-market/github-workflows/git/ref/tags/latest --jq .object.sha
+```
+
+The whole file, unchanged, is
+[`workflows/ai-code-review.yml`](workflows/ai-code-review.yml).
 
 Full guide: see [`CONTRIBUTING.md`](CONTRIBUTING.md). The target these examples
 are moving towards is in [`VISION.md`](VISION.md).

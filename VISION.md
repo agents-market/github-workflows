@@ -178,7 +178,7 @@ a clean directory with an empty npm cache, on 2026-10-18.
 | Every stage does the minimum work | At least 6 of 18 stages are software paying for an LLM call; `analyze_vulns` asks a model to recall CVEs | **open — see the audit below** |
 | Paid server-side invocation works | `pipeline call` without `--local` fails at payment: `INVALID_LINK: shared_link does not match derivation`, on 0.12.2 and 0.12.4 alike | **open — pre-existing, server-side** |
 | Consumer file is five lines | 18 lines; the `on:`/`permissions`/`secrets` header is the rest | needs a CI system that allows `uses:` at workflow top level |
-| Examples exist for the website | `examples/README.md` and `examples/github-actions/ai-review.yml`, both run against the live marketplace | **closed** |
+| Examples exist for the website | `examples/README.md` and `workflows/ai-code-review.yml`, both run against the live marketplace | **closed** |
 | Every pipeline reliable | `style-review` 100%, `code-review-security-audit` 100%, `test-generator` 5/6 at 6 000 chars, 6/6 at 15 000, 10/14 at 50 000 | fails only on very large diffs |
 
 ### The blocking items

@@ -40,7 +40,7 @@ env:
   # that is not published fails the test loudly, instead of quietly installing
   # whatever the catalogue happens to serve.
   FREE_PIPELINE: 'code-review-security-audit'
-  FREE_VERSION: '3.3.3'
+  FREE_VERSION: '3.4.0'
 
   # A pipeline that is actually paid. It stays priced at 1000 USDC on purpose —
   # it is what proves the paid path is real and what the consumer is told when
@@ -70,6 +70,40 @@ jobs:
       # reaches main rather than on the next PR.
       - name: Workflow files are structurally sound
         run: python3 .github/scripts/check-workflows.py
+
+      # The example is a directory of its own, so the check above does not see
+      # it — and it is the file every adopter pastes.
+      - name: The example is structurally sound
+        run: python3 .github/scripts/check-workflows.py workflows
+
+      # The example is what people paste. If the ref it names does not exist,
+      # every paste fails in the first job, in every repository, at once — and
+      # the person who pasted it has no way of knowing the fault is ours.
+      #
+      # A placeholder is the same failure with extra steps, so it is refused
+      # here too: `<full-commit-sha>` is not a ref, and a ref that does not
+      # resolve is not a ref either.
+      - name: The example we publish actually resolves
+        run: |
+          set -euo pipefail
+          REF=$(python3 -c "
+          import yaml
+          d = yaml.safe_load(open('workflows/ai-code-review.yml'))
+          for j in d['jobs'].values():
+              u = str(j.get('uses', ''))
+              if u.startswith('agents-market/github-workflows/'):
+                  print(u.split('@', 1)[1]); raise SystemExit
+          raise SystemExit('no uses: ref in the example')
+          ")
+          case "$REF" in
+            *"<"*|*">"*)
+              echo "::error::the example names a placeholder, not a ref: $REF"; exit 1;;
+          esac
+          URL=https://github.com/agents-market/github-workflows.git
+          git ls-remote --exit-code --tags "$URL" "refs/tags/$REF" >/dev/null \
+            || git ls-remote --exit-code --heads "$URL" "refs/heads/$REF" >/dev/null \
+            || { echo "::error::the example names $REF, which does not resolve in agents-market/github-workflows"; exit 1; }
+          echo "example resolves: $REF"
 
       - uses: actions/setup-node@v5
         with:
