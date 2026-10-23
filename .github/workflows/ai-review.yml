@@ -22,8 +22,12 @@ on:
   # Pin the full commit SHA, per CONTRIBUTING.md — never a tag.
   workflow_call:
     inputs:
-      pipeline_version:
-        description: 'Pin both pipelines to this version. Unset installs whatever is current — right for repositories that own the pipelines and can fix one, wrong for repositories that want a PR check that does not move under them.'
+      audit_version:
+        description: 'Pin the security audit to this version. Unset installs whatever is current — right for repositories that own the pipelines and can fix one, wrong for repositories that want a PR check that does not move under them.'
+        required: false
+        type: string
+      style_version:
+        description: 'Pin the style review to this version. Two inputs, not one: the two pipelines are released on their own schedule, so a version that fits one of them does not exist for the other.'
         required: false
         type: string
       focus_area:
@@ -101,12 +105,12 @@ jobs:
         # ${{ matrix.pipeline.x }} renders as nothing.
         pipeline:
           - slug: code-review-security-audit
-            version: ${{ inputs.pipeline_version }}
+            version: ${{ inputs.audit_version }}
             focus_area: ${{ inputs.focus_area || 'security' }}
             severity: ${{ inputs.severity || 'medium' }}
             label: security audit
           - slug: style-review
-            version: ${{ inputs.pipeline_version }}
+            version: ${{ inputs.style_version }}
             focus_area: ${{ inputs.focus_area || 'all' }}
             severity: ${{ inputs.severity || 'low' }}
             label: style review
@@ -140,7 +144,10 @@ jobs:
       # within minutes, and a pin here means this repository reviews itself with
       # the release before the last one — which is how it sat on a CLI old
       # enough to ignore stage.maxTokens while the smoke test proved the next
-      # one worked. Callers who want reproducibility pass pipeline_version.
+      # one worked. Callers who want reproducibility pass audit_version and
+      # style_version — one each, because the two are released on their own
+      # schedule and a version that fits one of them does not exist for the
+      # other.
       - name: Install pipeline from marketplace
         id: install
         env:

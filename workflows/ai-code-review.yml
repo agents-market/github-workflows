@@ -1,18 +1,32 @@
-# Copy this file to `.github/workflows/ai-review.yml` and add one secret.
+# Copy this file to `.github/workflows/ai-review.yml` in your repository, add
+# one secret, and every pull request is reviewed by two pipelines: a security
+# audit and a style review.
 #
-# Pin the full commit SHA, never a tag: a tag can move, a SHA cannot.
+# The one secret is MINIMAX_API_KEY — a MiniMax API key. Nothing else is
+# needed: no install step, no lockfile, no identity to create.
+#
+# `@latest` is the newest revision of this workflow that passed the consumer
+# smoke test. It moves, and that is the point: a fix we publish reaches you
+# without a pin bump. If you would rather your check not move under you, pin
+# the commit instead:
+#
+#   gh api repos/agents-market/github-workflows/git/ref/tags/latest --jq .object.sha
+#
+# The two pipelines are installed at their current versions. To pin them, add
+# `audit_version` and `style_version` under `with:` — one each, because the
+# two are released on their own schedule.
 name: AI Code Review
 
 on:
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   review:
-    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@<full-commit-sha>
+    uses: agents-market/github-workflows/.github/workflows/ai-review.yml@latest
     secrets:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}

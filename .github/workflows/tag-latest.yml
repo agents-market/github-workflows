@@ -1,0 +1,47 @@
+# Moves the `latest` tag to the newest revision that passed the consumer
+# smoke test.
+#
+# The tag is what adopters write:
+#
+#   uses: agents-market/github-workflows/.github/workflows/ai-review.yml@latest
+#
+# A tag that moves is a promise — "this is the newest revision we have
+# checked" — and a promise has to be kept by something, not by a person
+# remembering to move it.
+#
+# Why after the smoke test and not on every push: the smoke test is the gate
+# that says the consumer wiring works. A tag moved before that gate would hand
+# every adopter a revision nobody checked.
+name: Move the latest tag
+
+on:
+  workflow_run:
+    workflows: ["Consumer smoke test"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move the tag to the revision that passed
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch -q --tags origin
+          # A tag, not a branch: moving it is the whole point of the tag, and
+          # nothing depends on the old revision through it.
+          git tag -f latest "$SHA"
+          git push -q --force origin latest
+          echo "latest -> $SHA"
