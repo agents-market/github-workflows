@@ -539,8 +539,17 @@ jobs:
               // for the first id never closed. The reader saw the weakness
               // twice. The map is the shortcut — it covers the pairs the
               // catalogue offers for one weakness, not every future id.
+              //
+              // The map is deliberately short. A pair belongs here when the two
+              // ids name the same defect: 321 (a hard-coded cryptographic key)
+              // and 798 (hard-coded credentials) are the same line of code.
+              // CWE-200 (information exposure) is left out — it is a wider
+              // class than 209 (an error message with a secret in it), and
+              // merging them would hide one of two different exposures in the
+              // same file. Two comments for one weakness is the smaller fault:
+              // a hidden finding is worse than a duplicate.
               const CANON = { 'CWE-330': 'CWE-338', 'CWE-259': 'CWE-798',
-                'CWE-915': 'CWE-1321' };
+                'CWE-915': 'CWE-1321', 'CWE-321': 'CWE-798' };
               const canon = (id) => {
                 const u = String(id || '').trim().toUpperCase();
                 return CANON[u] || u;
