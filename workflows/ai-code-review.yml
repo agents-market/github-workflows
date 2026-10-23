@@ -20,6 +20,19 @@ name: AI Code Review
 on:
   pull_request:
 
+# The permissions below are load-bearing. A reusable workflow can only narrow
+# the permissions it is given, so it asks for exactly what it needs:
+# `pull-requests: write` to post the inline comments, `issues: write` to post
+# the summary comment.
+#
+# Delete a line from that block and the run does not start. GitHub refuses the
+# called workflow — zero jobs, no comment, and no message that names the
+# permission. It was measured, not guessed: a run with `issues: write` taken
+# out ended in `startup_failure`, and the same file with the line back was
+# green.
+#
+# If your repository's policy forbids `issues: write`, say so and we will make
+# the summary optional. Do not delete the line on your own.
 permissions:
   contents: read
   pull-requests: write
