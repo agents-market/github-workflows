@@ -107,6 +107,17 @@ reviewed by the same canonical review as every other pull request, called
 explicitly, because GitHub does not run workflows for a pull request opened by
 its own token.
 
+The rules around that bot — one pull request per error class, a ceiling on
+how many fixes may be open at once, an issue instead of a pull request the
+repository will not let it open — are in
+[`scripts/error-autofix.mjs`](scripts/error-autofix.mjs), where
+[`scripts/check-error-autofix.mjs`](scripts/check-error-autofix.mjs) can see
+them. The daily check that a merged fix actually stopped the error is a
+second file, [`workflows/ai-error-autofix-watch.yml`](workflows/ai-error-autofix-watch.yml):
+it needs a feed of what is still failing (`ERROR_FEED_URL`), and a feed that
+does not answer fails the sweep rather than reporting that every error
+stopped.
+
 For wiring a pipeline directly rather than through the review workflow, see
 `agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)`.
 

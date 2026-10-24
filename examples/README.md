@@ -156,14 +156,20 @@ workflow makes. To pin it, set `AI_AUTOFIX_REF` to a commit SHA.
 ### The policy around it
 
 A bot that opens a pull request for every error is a bot that gets ignored.
-The rules are in the workflow, and they are four:
+The rules are in the script the workflow runs — `scripts/error-autofix.mjs`,
+where the checks can see them — and they are four:
 
 | Rule | What it does |
 |------|--------------|
 | One pull request per error class | The branch is named after the error's signature, so a second run of the same error updates the open pull request instead of opening another one |
 | Labels | Pull requests carry `auto-fix`, issues carry `needs-review` — so a person can see what came from the bot |
 | A ceiling | Past `MAX_OPEN_PRS` open fixes (three by default), the next one becomes an issue. A queue of fixes nobody merges is worth less than a queue of issues somebody reads |
-| The loop | Once a day, the workflow checks every merged fix: is the error it was for still firing? The ones that are become issues. A fix that did not fix anything is worth more as an issue than as a merged pull request |
+| The loop | Once a day, the sweep checks every merged fix: is the error it was for still firing? The ones that are become issues. A fix that did not fix anything is worth more as an issue than as a merged pull request |
+
+The loop is a second file:
+[`workflows/ai-error-autofix-watch.yml`](../workflows/ai-error-autofix-watch.yml).
+Copy it to `.github/workflows/` as well — it is a job of its own, and a
+consumer who wants the fixes without the audit copies one file.
 
 The loop needs to know what is still firing, so it asks your feed:
 `ERROR_FEED_URL`, a repository variable pointing at a URL that answers with
