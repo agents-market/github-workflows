@@ -1,6 +1,6 @@
 ---
 name: error-autofix
-version: 1.1.0
+version: 1.1.1
 description: |
   AI error autofixer — takes a production error (message + stack trace) and the
   source files it points at, and returns the root cause, a concrete fix (the
