@@ -61,7 +61,7 @@ env:
   # not send it. Every pipeline published with it came back as
   # `call_price_usdc: 0` — the catalogue said "the author charges nothing"
   # because the publisher had never heard of the field.
-  CLI_VERSION: '0.14.1'
+  CLI_VERSION: '0.14.14'
   # Job-level, because each `run:` is its own shell. Defining MARKER inside the
   # detect step meant the write-back step — which needs the same path — saw an
   # empty variable, `echo sha > ""` failed, and the step died before committing
@@ -164,6 +164,7 @@ jobs:
       # `pipeline test` is disabled in the CLI for 0.10.0, so nothing in this
       # repo has ever run the test.yaml files. This gate is the only thing
       # standing between a malformed pipeline.yaml and the public catalogue.
+      # Since 0.14.14 the command is back, so the test.yaml files run here.
       - name: Validate every changed pipeline
         if: steps.detect.outputs.changed != ''
         env:
@@ -250,6 +251,18 @@ jobs:
             fi
 
             npx @agentsmarket/cli@${CLI_VERSION} validate "pipelines/$SLUG/pipeline.yaml"
+
+            # The spec's own test, in mock mode: no key, no network, no money.
+            # Every pipeline in this repo ships a test.yaml, and until the CLI
+            # brought `pipeline test` back (0.14.14) nothing had ever run
+            # them — the gate checked the YAML syntax and nothing else, so a
+            # spec could be syntactically fine and unexecutable. The first
+            # real run of this step found one: code-review-security-audit
+            # asserted `pattern_scan.findings` while the stage produces
+            # `candidates`.
+            if [ -f "pipelines/$SLUG/test.yaml" ]; then
+              npx @agentsmarket/cli@${CLI_VERSION} pipeline test --file "pipelines/$SLUG/test.yaml"
+            fi
             echo "::endgroup::"
           done
 

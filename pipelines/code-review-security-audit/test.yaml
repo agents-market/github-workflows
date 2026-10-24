@@ -9,7 +9,12 @@ inputs:
   severity_threshold: medium
 assertions:
   - type: exists
-    path: pattern_scan.findings
+    # The stage emits `candidates`, not `findings` — it says so in its own
+    # prompt, because the next stage drops the false positives and a rejected
+    # lead must not be counted as a finding. This test never ran until
+    # `agentsmarket pipeline test` was re-enabled, and it asserted a key the
+    # pipeline never produced.
+    path: pattern_scan.candidates
   - type: gte
     path: aggregate.summary.high_count
     value: 1
