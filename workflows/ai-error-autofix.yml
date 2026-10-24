@@ -1,29 +1,20 @@
 # Production error → pull request. One file, one secret.
 #
 # The error comes from production: your Sentry, your own endpoint, or a
-# repository_dispatch. The `error-autofix` pipeline says what is wrong and what
-# to change; this file applies the change, writes the test, and opens the pull
-# request for a human to approve.
-#
-# The pipeline knows nothing about GitHub. That is the boundary, and it is the
-# point: the pipeline returns a fix, this file owns the token, the branch and
-# the pull request.
+# repository_dispatch. The `error-autofix` pipeline says what is wrong and
+# what to change; this file applies the change, writes the test, and opens the
+# pull request for a human to approve.
 #
 # The one secret is MINIMAX_API_KEY. The token that opens the pull request is
-# GITHUB_TOKEN, which GitHub gives the run — there is no second secret to
-# store and nothing to leak.
+# GITHUB_TOKEN, which GitHub gives the run — nothing to store, nothing to leak.
 #
-# One repository setting has to be on, or the fix lands as an issue instead
-# of a pull request: Settings → Actions → General → Workflow permissions →
-# "Allow GitHub Actions to create and approve pull requests". An
-# organization can forbid it for every repository it owns, and then this
-# workflow files issues and pushes branches, which is the honest half of the
-# job.
+# One repository setting has to be on, or the fix lands as an issue instead of
+# a pull request: Settings → Actions → General → Workflow permissions →
+# "Allow GitHub Actions to create and approve pull requests".
 #
-# What it opens, and what it does not: the fix is applied only when it is
-# mechanical — one file, the old snippet present exactly once, a test written.
-# Everything else becomes an issue with the analysis attached, because a pull
-# request nobody can review is worse than an issue.
+# The rules around the bot — one pull request per error class, a ceiling on
+# open fixes — live in the script, where the checks can see them. The daily
+# check that a merged fix stopped the error is `ai-error-autofix-watch.yml`.
 name: AI Error Autofix
 
 on:
@@ -53,41 +44,24 @@ on:
   #     -f event_type=production_error -f client_payload[error_report]='...'
   repository_dispatch:
     types: [production_error]
-  # Once a day, the policy sweep: for every fix that was merged, is the
-  # error it was for still firing? The ones that are become issues — a fix
-  # that did not stop the error is worth more as an issue than as a merged
-  # pull request. 06:23 UTC, not on the hour: every scheduled workflow in
-  # the world runs on the hour, and GitHub delays them.
-  schedule:
-    - cron: '23 6 * * *'
 
-# Load-bearing, not decoration. A reusable workflow can only narrow the
-# permissions it is given, so this file asks for exactly what it needs:
-# `contents: write` to push the fix branch, `pull-requests: write` to open the
-# pull request, `issues: write` to open the issue when the fix is not
-# mechanical. The review workflow called below needs the last two as well.
+# Load-bearing, not decoration: a reusable workflow can only narrow the
+# permissions it is given, so this file asks for exactly what it needs.
 permissions:
   contents: write
   pull-requests: write
   issues: write
 
 env:
-  # The script that resolves the stack and applies the fix is fetched from our
-  # repository. `latest` is the newest revision that passed the consumer smoke
-  # test — it moves, and that is the point: a fix we publish reaches you
-  # without a bump. If you would rather your fix not move under you, pin a
-  # commit:
-  #
+  # The script that resolves the stack, applies the fix and opens the pull
+  # request is fetched from our repository. `latest` is the newest revision
+  # that passed the consumer smoke test. To pin it instead:
   #   gh api repos/agents-market/github-workflows/git/ref/tags/latest --jq .object.sha
   AI_AUTOFIX_REF: latest
 
 jobs:
   fix:
     name: Fix the error
-    # The daily sweep is the policy job, not this one: there is no error in
-    # it to fix, and a run that invented one would be a run nobody could
-    # trust.
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -142,31 +116,8 @@ jobs:
             -o "$RUNNER_TEMP/error-autofix.mjs"
 
       # The stack trace is resolved to files by code, not by the model: the
-      # model is asked to fix code, not to find it.
-      #
-      # A minified bundle has no path to take: "js/app-HASH.js:1:141" means
-      # nothing without the source map. So the frames are walked, and each
-      # frame that points at a bundle is resolved through that bundle's map —
-      # the bundle's own path with ".map" added, read from your checkout
-      # (MAPS_DIR) or from a URL (MAPS_BASE_URL). Without a map the position
-      # is not resolved, and the run says so instead of guessing.
-      #
-      # MAPS_BASE_URL is the directory the maps live in, not the root of the
-      # site: the map of "https://site/js/app.js" is "<base>/js/app.js.map".
-      # A deployment that keeps its maps under a prefix puts that prefix in
-      # the base. The maps are usually private, so the base is an endpoint of
-      # yours and it may want a token — MAPS_TOKEN, a secret.
-      #
-      # The frames are walked in order and the first one in your own code
-      # wins: the top frame of a "Failed to fetch" sits inside the SDK that
-      # was called, and the code to change is further down.
-      #
-      # The playbook is your file with the errors you already know about and
-      # the fix each of them gets. It is optional, and it is yours: the
-      # specifics of your errors live in your repository, not in this
-      # workflow. When one of its entries matches the error, the files it
-      # names are the ones the fix belongs in — that is how an error with no
-      # stack at all ("Load failed") gets fixed.
+      # model is asked to fix code, not to find it. The rules for source maps
+      # and for the consumer's playbook are in the script.
       - name: Resolve the stack to files
         id: sources
         env:
@@ -241,11 +192,20 @@ jobs:
     needs: [fix, review]
     # `always()`: a review that did not complete must not lose the fix, and a
     # fix that failed must still file the error somewhere. Both land below.
-    # `skipped` is neither: on the daily sweep there is no error at all, and
-    # an empty issue is worse than no issue.
+    # `skipped` is neither: there is no error to file.
     if: always() && needs.fix.result != 'cancelled' && needs.fix.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
+      - name: Fetch the autofix script
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/agents-market/github-workflows/${AI_AUTOFIX_REF}/scripts/error-autofix.mjs" \
+            -o "$RUNNER_TEMP/error-autofix.mjs"
+
+      # One pull request per error class, a ceiling on how many fixes may be
+      # open at once, and — when the repository does not let GitHub Actions
+      # create pull requests — an issue instead of a lost fix. The rules are
+      # in the script, where the checks can see them.
       - name: Open a pull request
         if: needs.fix.outputs.pr_ready == 'true'
         env:
@@ -255,58 +215,11 @@ jobs:
           TITLE: ${{ needs.fix.outputs.title }}
           BODY: ${{ needs.fix.outputs.body }}
           SIGNATURE: ${{ needs.fix.outputs.signature }}
-          REVIEW: ${{ needs.review.result }}
+          REVIEW_RESULT: ${{ needs.review.result }}
           MAX_OPEN_PRS: ${{ vars.MAX_OPEN_PRS || '3' }}
         run: |
           set -euo pipefail
-          if [ "$REVIEW" = "failure" ]; then
-            BODY="$BODY
-
-          > The AI review did not complete — this fix is un-reviewed. See the run."
-          fi
-
-          # The label every fix this workflow opened carries: a person can
-          # find them all, and so can the daily sweep.
-          gh label create auto-fix --repo "$REPO" --color 0E8A16 \
-            --description "A fix this workflow opened from a production error" 2>/dev/null || true
-
-          # One pull request per error class. The branch is named after the
-          # signature, so a second run of the same error pushes to the same
-          # branch: the open pull request updates itself instead of a second
-          # one appearing next to it.
-          EXISTING=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$EXISTING" ]; then
-            echo "an open pull request already fixes this error class: #$EXISTING"
-            gh pr comment "$EXISTING" --repo "$REPO" \
-              --body "The same error fired again. The branch carries the newest attempt."
-            exit 0
-          fi
-
-          # The ceiling. A queue of fixes nobody merges is worth less than a
-          # queue of issues somebody reads, so past the ceiling this one
-          # becomes an issue.
-          OPEN=$(gh pr list --repo "$REPO" --state open --label auto-fix --json number --jq 'length')
-          if [ "$OPEN" -ge "$MAX_OPEN_PRS" ]; then
-            echo "::notice::$OPEN fixes are already open and the ceiling is $MAX_OPEN_PRS — this one becomes an issue."
-            gh label create needs-review --repo "$REPO" --color FBCA04 \
-              --description "An error that needs a human" 2>/dev/null || true
-            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" --label needs-review
-            exit 0
-          fi
-
-          if ! gh pr create --repo "$REPO" \
-            --base "${{ github.event.repository.default_branch }}" \
-            --head "$BRANCH" --title "$TITLE" --body "$BODY" --label auto-fix; then
-            # The fix is on the branch either way. A repository that does not
-            # let GitHub Actions create pull requests — the organization may
-            # forbid it — gets the fix as an issue instead of losing it.
-            echo "::warning::the pull request could not be opened — the fix is filed as an issue instead"
-            gh label create needs-review --repo "$REPO" --color FBCA04 \
-              --description "An error that needs a human" 2>/dev/null || true
-            gh issue create --repo "$REPO" --title "$TITLE" \
-              --body "$(printf '%s\n\nThe fix is on the branch `%s`. A pull request could not be opened: the repository does not let GitHub Actions create them.' "$BODY" "$BRANCH")" \
-              --label needs-review
-          fi
+          node "$RUNNER_TEMP/error-autofix.mjs" publish "$GITHUB_WORKSPACE"
 
       - name: Open an issue
         if: needs.fix.outputs.pr_ready != 'true'
@@ -319,90 +232,4 @@ jobs:
           ERROR_REPORT: ${{ inputs.error_report || github.event.client_payload.error_report }}
         run: |
           set -euo pipefail
-          if [ -z "$BODY" ]; then
-            BODY=$(printf '## What broke\n\n~~~\n%s\n~~~\n' "$ERROR_REPORT")
-          fi
-          gh label create needs-review --repo "$REPO" --color FBCA04 \
-            --description "An error that needs a human" 2>/dev/null || true
-
-          # One issue per error class too: the same failure, twice, is one
-          # thing to look at. The signature is in the body as a marker, and
-          # an empty signature matches nothing — so it is not compared.
-          if [ -n "$SIGNATURE" ]; then
-            EXISTING=$(gh issue list --repo "$REPO" --state open --label needs-review --json number,body \
-              | jq -r --arg sig "$SIGNATURE" '.[] | select((.body // "") | contains("error-signature: " + $sig)) | .number' | head -1)
-            if [ -n "$EXISTING" ]; then
-              echo "an open issue already carries this error class: #$EXISTING"
-              gh issue comment "$EXISTING" --repo "$REPO" --body "The same error fired again."
-              exit 0
-            fi
-          fi
-
-          gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" --label needs-review
-
-  policy:
-    name: Check that the fixes stopped the errors
-    # Once a day: for every fix that was merged, is the error it was for
-    # still firing? A fix that did not stop the error is worth more as an
-    # issue than as a merged pull request.
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: The fixes that were merged
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          DAYS: ${{ vars.VERIFY_LOOKBACK_DAYS || '7' }}
-        run: |
-          set -euo pipefail
-          SINCE=$(date -u -d "$DAYS days ago" +%Y-%m-%d)
-          gh pr list --repo "$REPO" --state merged --label auto-fix \
-            --search "merged:>=$SINCE" --json number,body \
-            | jq -r '.[] | [.number, (.body // "" | @base64)] | @tsv' \
-            > "$RUNNER_TEMP/fixes.tsv"
-          echo "checking $(wc -l < "$RUNNER_TEMP/fixes.tsv") merged fix(es)"
-
-      - name: The errors that are still firing
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          FEED: ${{ vars.ERROR_FEED_URL }}
-        run: |
-          set -euo pipefail
-          if [ -z "$FEED" ]; then
-            echo "::notice::ERROR_FEED_URL is not set — there is nothing to check the fixes against."
-            exit 0
-          fi
-          # A feed that does not answer is a failure, not an empty answer: an
-          # empty feed would say every error stopped firing, and that is the
-          # one answer that must never be invented.
-          if ! curl -fsSL --max-time 30 "$FEED" -o "$RUNNER_TEMP/feed.txt"; then
-            echo "::error::the error feed $FEED did not answer — the fixes were not checked"
-            exit 1
-          fi
-          gh label create needs-review --repo "$REPO" --color FBCA04 \
-            --description "An error that needs a human" 2>/dev/null || true
-
-          while IFS=$'\t' read -r NUMBER BODY_B64; do
-            [ -n "$NUMBER" ] || continue
-            BODY=$(printf '%s' "$BODY_B64" | base64 -d)
-            PROBE=$(printf '%s\n' "$BODY" | sed -n 's/.*<!-- error-probe: \(.*\) -->.*/\1/p' | head -1)
-            [ -n "$PROBE" ] || continue
-            SIGNATURE=$(printf '%s\n' "$BODY" | sed -n 's/.*<!-- error-signature: \(.*\) -->.*/\1/p' | head -1)
-            if ! grep -qF -- "$PROBE" "$RUNNER_TEMP/feed.txt"; then
-              echo "#$NUMBER: the error stopped firing"
-              continue
-            fi
-            echo "#$NUMBER: the error is still firing"
-            EXISTING=$(gh issue list --repo "$REPO" --state open --label needs-review --json number,body \
-              | jq -r --arg sig "$SIGNATURE" '.[] | select((.body // "") | contains("error-signature: " + $sig)) | .number' | head -1)
-            if [ -n "$EXISTING" ]; then
-              echo "  already tracked by #$EXISTING"
-              continue
-            fi
-            gh issue create --repo "$REPO" \
-              --title "The error is still firing after the fix was merged (#$NUMBER)" \
-              --body "$(printf 'The fix in #%s was merged, and the error it was for is still firing.\n\n**Error:** %s\n**Signature:** %s\n\nChecked against the error feed. Either the fix addressed a different cause, or the cause is somewhere else.' "$NUMBER" "$PROBE" "$SIGNATURE")" \
-              --label needs-review
-          done < "$RUNNER_TEMP/fixes.tsv"
+          node "$RUNNER_TEMP/error-autofix.mjs" report "$GITHUB_WORKSPACE"

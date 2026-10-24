@@ -1,0 +1,64 @@
+# The other half of the autofix: did the fix stop the error?
+#
+# Once a day, for every fix this repository merged from a production error,
+# the question is asked again: is the error it was for still firing? A fix
+# that did not fix anything is worth more as an issue than as a merged pull
+# request — the person who has to look at it needs to know that the first
+# attempt did not work.
+#
+# It is a separate file on purpose: a workflow that opens pull requests and a
+# workflow that audits them are two jobs, and a consumer who wants the first
+# without the second copies one file.
+#
+# The contract with the consumer's error feed is small: the text of the error
+# appears in the answer while the error is still firing. The feed is
+# `ERROR_FEED_URL` — a repository variable, the URL of your endpoint that
+# lists what is currently failing. The feed that does not answer fails the
+# sweep loudly, because an empty feed would say every error stopped firing,
+# and that is the one answer that must never be invented.
+#
+# 06:23 UTC, not on the hour: every scheduled workflow in the world runs on
+# the hour, and GitHub delays them.
+name: AI Error Autofix Watch
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+
+permissions:
+  # Read the pull requests that were merged, and write the issues the sweep
+  # opens. Nothing else: this job opens no pull request and pushes no branch.
+  contents: read
+  pull-requests: read
+  issues: write
+
+env:
+  # The script that asks the question is fetched from our repository, at the
+  # same revision the autofix workflow uses.
+  AI_AUTOFIX_REF: latest
+
+jobs:
+  sweep:
+    name: Check that the fixes stopped the errors
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch the autofix script
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/agents-market/github-workflows/${AI_AUTOFIX_REF}/scripts/error-autofix.mjs" \
+            -o "$RUNNER_TEMP/error-autofix.mjs"
+
+      # The merged fixes come from the pull requests labelled `auto-fix`, and
+      # the error is looked for in the feed by the text of the error itself.
+      # A fix that is still firing becomes an issue; an error that already has
+      # one is not filed twice.
+      - name: The errors that are still firing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ERROR_FEED_URL: ${{ vars.ERROR_FEED_URL }}
+          VERIFY_LOOKBACK_DAYS: ${{ vars.VERIFY_LOOKBACK_DAYS || '7' }}
+        run: |
+          set -euo pipefail
+          node "$RUNNER_TEMP/error-autofix.mjs" sweep "$GITHUB_WORKSPACE"

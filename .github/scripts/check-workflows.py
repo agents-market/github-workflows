@@ -167,16 +167,33 @@ def shell_problem(script: str) -> str:
 
 
 def main() -> int:
-    failures = 0
-    root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".github/workflows")
+    args = list(sys.argv[1:])
+    # A reference workflow has to stay short enough to read. The rule lives in
+    # CONTRIBUTING.md, and a rule nobody checks is a rule that stops being
+    # true: this file was 408 lines before anything measured it.
+    max_lines = None
+    if "--max-lines" in args:
+        index = args.index("--max-lines")
+        max_lines = int(args[index + 1])
+        del args[index : index + 2]
+    root = pathlib.Path(args[0] if args else ".github/workflows")
     files = sorted(root.glob("*.yml")) + sorted(root.glob("*.yaml"))
     if not files:
         print(f"no workflow files found in {root}", file=sys.stderr)
         return 1
 
+    failures = 0
     for path in files:
+        text = path.read_text()
+        if max_lines is not None:
+            count = len(text.splitlines())
+            if count > max_lines:
+                failures += 1
+                print(f"FAIL {path}")
+                print(f"  - {count} lines; a reference workflow must be {max_lines} or fewer")
+                continue
         try:
-            spec = yaml.safe_load(path.read_text())
+            spec = yaml.safe_load(text)
         except yaml.YAMLError as exc:
             print(f"FAIL {path}: not valid YAML — {exc}")
             failures += 1

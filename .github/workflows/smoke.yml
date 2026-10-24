@@ -72,9 +72,11 @@ jobs:
         run: python3 .github/scripts/check-workflows.py
 
       # The example is a directory of its own, so the check above does not see
-      # it — and it is the file every adopter pastes.
+      # it — and it is the file every adopter pastes. The line limit is
+      # checked with it: a reference workflow a person cannot read is not a
+      # reference workflow.
       - name: The example is structurally sound
-        run: python3 .github/scripts/check-workflows.py workflows
+        run: python3 .github/scripts/check-workflows.py workflows --max-lines 250
 
       # The GitLab side has its own file and its own reader, and nothing
       # else in this repository exercises them: a note that renders "undefined"
