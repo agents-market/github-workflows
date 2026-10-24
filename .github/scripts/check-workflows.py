@@ -43,6 +43,14 @@ KNOWN_LOCAL_PREFIXES = "./", ".github/"
 # brace.
 EXPRESSION = re.compile(r"\$\{\{[^}]*\}\}")
 
+# A `gh` call needs a repository. In a job that never checks the repository
+# out, `gh` has none to work in — and the call fails before it does anything.
+# This was found by a real run: `gh label create` without `--repo` failed, the
+# label was never created, and the pull request that followed could not carry
+# it.
+GH_NEEDS_REPO = re.compile(r"\bgh\s+(pr|issue|label|release)\b")
+REPO_FLAG = re.compile(r"(--repo|-R)(\s|=)")
+
 
 def check(path: pathlib.Path, spec: dict) -> list[str]:
     problems: list[str] = []
@@ -100,7 +108,43 @@ def check(path: pathlib.Path, spec: dict) -> list[str]:
                 if problem:
                     problems.append(f"{where}: the `run:` block is not valid bash — {problem}")
 
+        # 5. a `gh` call needs a repository, and a job that never checks the
+        #    repository out has none to work in.
+        steps = job.get("steps") or []
+        checked_out = any(
+            str(step.get("uses", "")).startswith("actions/checkout") for step in steps
+        )
+        if not checked_out:
+            for index, step in enumerate(steps, start=1):
+                run = step.get("run")
+                if not isinstance(run, str):
+                    continue
+                where = f"{job_id} / step {index} ({step.get('name') or 'unnamed'})"
+                for line in logical_lines(run):
+                    found = GH_NEEDS_REPO.search(line)
+                    if found and not REPO_FLAG.search(line):
+                        problems.append(
+                            f"{where}: `gh {found.group(1)}` without --repo, in a job that "
+                            f"never checks the repository out — gh has no repository to work in"
+                        )
+
     return problems
+
+
+def logical_lines(script: str) -> list[str]:
+    """The script's commands, with the line continuations joined."""
+    joined: list[str] = []
+    current = ""
+    for line in script.splitlines():
+        current = f"{current} {line.strip()}".strip() if current else line.strip()
+        if current.endswith("\\"):
+            current = current[:-1].rstrip()
+            continue
+        joined.append(current)
+        current = ""
+    if current:
+        joined.append(current)
+    return joined
 
 
 def shell_problem(script: str) -> str:

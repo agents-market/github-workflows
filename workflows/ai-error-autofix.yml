@@ -253,7 +253,7 @@ jobs:
 
           # The label every fix this workflow opened carries: a person can
           # find them all, and so can the daily sweep.
-          gh label create auto-fix --color 0E8A16 \
+          gh label create auto-fix --repo "$REPO" --color 0E8A16 \
             --description "A fix this workflow opened from a production error" 2>/dev/null || true
 
           # One pull request per error class. The branch is named after the
@@ -274,7 +274,7 @@ jobs:
           OPEN=$(gh pr list --repo "$REPO" --state open --label auto-fix --json number --jq 'length')
           if [ "$OPEN" -ge "$MAX_OPEN_PRS" ]; then
             echo "::notice::$OPEN fixes are already open and the ceiling is $MAX_OPEN_PRS — this one becomes an issue."
-            gh label create needs-review --color FBCA04 \
+            gh label create needs-review --repo "$REPO" --color FBCA04 \
               --description "An error that needs a human" 2>/dev/null || true
             gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" --label needs-review
             exit 0
@@ -298,7 +298,7 @@ jobs:
           if [ -z "$BODY" ]; then
             BODY=$(printf '## What broke\n\n~~~\n%s\n~~~\n' "$ERROR_REPORT")
           fi
-          gh label create needs-review --color FBCA04 \
+          gh label create needs-review --repo "$REPO" --color FBCA04 \
             --description "An error that needs a human" 2>/dev/null || true
 
           # One issue per error class too: the same failure, twice, is one
@@ -357,7 +357,7 @@ jobs:
             echo "::error::the error feed $FEED did not answer — the fixes were not checked"
             exit 1
           fi
-          gh label create needs-review --color FBCA04 \
+          gh label create needs-review --repo "$REPO" --color FBCA04 \
             --description "An error that needs a human" 2>/dev/null || true
 
           while IFS=$'\t' read -r NUMBER BODY_B64; do
