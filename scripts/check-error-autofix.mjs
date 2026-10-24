@@ -224,7 +224,7 @@ function run(command, repo, env) {
   const script = readFileSync(SCRIPT, 'utf8');
   const last = spec.stages[spec.stages.length - 1];
   const fixSchema = last.output_schema?.properties?.fix;
-  for (const key of ['error_report', 'source_files', 'repo_context']) {
+  for (const key of ['error_report', 'source_files', 'repo_context', 'playbook']) {
     check(`the spec declares ${key}`, Boolean(spec.inputs?.[key]));
     check(`the script reads ${key}`, script.includes(key));
   }
@@ -272,7 +272,12 @@ function run(command, repo, env) {
   try {
     result = await runPipelineV2({
       spec,
-      inputs: { error_report: REPORT, source_files: { 'src/users.ts': SOURCE }, repo_context: 'Node 20' },
+      inputs: {
+        error_report: REPORT,
+        source_files: { 'src/users.ts': SOURCE },
+        repo_context: 'Node 20',
+        playbook: { signature: 'Load failed', approach: 'Reload once.', files_hint: ['src/users.ts'], needs_location: false },
+      },
       deps,
     });
   } catch (e) {
@@ -313,6 +318,77 @@ function shaped(schema) {
     case 'boolean': return true;
     default: return 'mock';
   }
+}
+
+// 9. The playbook: the consumer's own record of a known issue. When one
+//    matches, it decides the files — that is how an error with no stack at
+//    all ("Load failed") gets fixed.
+{
+  const repo = makeRepo();
+  writeFileSync(join(repo, '.error-playbook.json'), JSON.stringify({
+    issues: [{
+      signature: 'Load failed',
+      approach: 'Reload once when the dynamic import fails.',
+      files_hint: ['src/users.ts'],
+      needs_location: false,
+    }],
+  }));
+  const { outputs } = run('sources', repo, { ERROR_REPORT: 'Load failed' });
+  const payload = JSON.parse(outputs.inputs_json);
+  check('the playbook entry reaches the pipeline', payload.playbook?.signature === 'Load failed');
+  check('the approach reaches the pipeline', String(payload.playbook?.approach || '').includes('Reload once'));
+  check('the playbook names the file the fix belongs in', Object.keys(payload.source_files).join() === 'src/users.ts');
+  check('the playbook is reported back', String(outputs.playbook_json || '').includes('Load failed'));
+}
+
+// 10. A playbook that does not match leaves the pipeline alone.
+{
+  const repo = makeRepo();
+  writeFileSync(join(repo, '.error-playbook.json'), JSON.stringify({
+    issues: [{ signature: 'Load failed', approach: 'Reload once.', files_hint: ['src/users.ts'] }],
+  }));
+  const { outputs } = run('sources', repo, { ERROR_REPORT: REPORT });
+  const payload = JSON.parse(outputs.inputs_json);
+  check('a playbook that does not match stays out of the pipeline', Object.keys(payload.playbook || {}).length === 0);
+  check('the file the stack points at is still the one', Object.keys(payload.source_files).join() === 'src/users.ts');
+}
+
+// 11. No playbook at all is normal, not an error.
+{
+  const repo = makeRepo();
+  const { outputs } = run('sources', repo, { ERROR_REPORT: REPORT });
+  const payload = JSON.parse(outputs.inputs_json);
+  check('a repository without a playbook still works', Object.keys(payload.playbook || {}).length === 0);
+}
+
+// 12. A playbook that does not parse stops the run: a fix built on the
+//     wrong playbook is worse than no fix.
+{
+  const repo = makeRepo();
+  writeFileSync(join(repo, '.error-playbook.json'), '{not json');
+  let failed = false;
+  let message = '';
+  try {
+    run('sources', repo, { ERROR_REPORT: REPORT });
+  } catch (e) {
+    failed = true;
+    message = String(e.stderr || e.message || '');
+  }
+  check('a playbook that does not parse fails loudly', failed);
+  check('the failure says what is wrong', message.includes('not valid JSON'), message.slice(0, 160));
+}
+
+// 13. The known issue reaches the pull request: the reviewer has to see
+//     that this error is one the consumer already wrote down.
+{
+  const repo = makeRepo();
+  const { outputs } = run('apply', repo, {
+    STAGE_OUTPUT: RESULT,
+    ERROR_REPORT: REPORT,
+    PLAYBOOK_JSON: JSON.stringify({ signature: 'Load failed', approach: 'Reload once.' }),
+  });
+  check('the body names the known issue', String(outputs.body || '').includes('Load failed'));
+  check('the body carries the approach', String(outputs.body || '').includes('Reload once.'));
 }
 
 console.log(failures ? `\n${failures} checks failed` : '\nall checks passed');

@@ -7,6 +7,12 @@ inputs:
   source_files:
     src/api/users.ts: "export function getName(user) {\n  const name = user.name;\n  return name;\n}\n"
   repo_context: "Node 20, TypeScript, vitest for tests."
+  playbook:
+    signature: "Cannot read properties of null"
+    approach: "The name is read before the null check that guarantees it."
+    files_hint:
+      - src/api/users.ts
+    needs_location: true
 assertions:
   - type: exists
     path: analyze_error.analysis

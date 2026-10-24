@@ -27,6 +27,8 @@ const MAX_FILES = 3;
 // A file this size is code a human reads. Bigger is a bundle or a lockfile,
 // and the error did not come from there.
 const MAX_FILE_CHARS = 12000;
+// The consumer's own record of known issues, when they keep one.
+const PLAYBOOK_DEFAULT = '.error-playbook.json';
 
 const command = process.argv[2];
 const workspace = resolve(process.argv[3] || process.cwd());
@@ -58,25 +60,89 @@ function inside(candidate) {
 }
 
 /**
+ * The consumer's playbook: the errors they know about and the fix each of
+ * them gets.
+ *
+ * It is configuration, not code. The same script runs in every consumer's
+ * repository, and the specifics — which errors, which files, which fix —
+ * live in the consumer's own file. JSON, because the workflow that runs this
+ * script installs no packages.
+ *
+ * Returns null when there is no playbook: a repository without one is
+ * normal. A playbook that exists and does not parse is an error — a fix
+ * built on the wrong playbook is worse than no fix.
+ */
+function readPlaybook() {
+  const name = process.env.PLAYBOOK_FILE || PLAYBOOK_DEFAULT;
+  const file = resolve(workspace, name);
+  if (!existsSync(file)) return null;
+  let data;
+  try {
+    data = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (e) {
+    throw new Error(`the playbook ${name} is not valid JSON: ${e.message}`);
+  }
+  const issues = Array.isArray(data) ? data : (data && data.issues) || [];
+  const usable = issues.filter((i) => i && typeof i.signature === 'string' && i.signature.trim());
+  return { name, issues: usable };
+}
+
+/**
+ * The first playbook entry that matches the error.
+ *
+ * `contains` and `exact` look at the message — the first line of the report.
+ * `regex` looks at the whole report, because a stack can carry the text.
+ * The first entry that matches wins, so the order in the file is the order
+ * of precedence.
+ */
+function matchPlaybook(playbook, report) {
+  if (!playbook) return null;
+  const message = (report.split('\n')[0] || '').trim();
+  for (const issue of playbook.issues) {
+    const signature = issue.signature.trim();
+    const mode = issue.match || 'contains';
+    if (mode === 'exact') {
+      if (message.toLowerCase() === signature.toLowerCase()) return issue;
+    } else if (mode === 'regex') {
+      let re = null;
+      try { re = new RegExp(signature); } catch { re = null; }
+      if (re && re.test(report)) return issue;
+    } else if (message.toLowerCase().includes(signature.toLowerCase())) {
+      return issue;
+    }
+  }
+  return null;
+}
+
+/**
  * The files the stack trace points at.
  *
  * The paths are read out of the error text by pattern, and a path is taken
  * only when it exists in this checkout. The model is not asked to find them:
  * it is asked to fix code, and a file it cannot see is a file it would
  * invent.
+ *
+ * The playbook comes first: when the consumer has written down a known
+ * issue, the files they name for it are the ones the fix belongs in.
  */
-function resolveFiles(report) {
-  const candidates = report.replace(/\\/g, '/').match(/[A-Za-z0-9_./-]+\.[A-Za-z]{1,6}/g) || [];
+function resolveFiles(report, playbookMatch) {
   const files = [];
   const seen = new Set();
-  for (const candidate of candidates) {
-    const path = candidate.replace(/^\.?\//, '');
-    if (!path || seen.has(path)) continue;
-    if (path.startsWith('..') || path.includes('node_modules/')) continue;
-    if (!existsSync(join(workspace, path))) continue;
+  const add = (path) => {
+    if (!path || seen.has(path)) return;
+    if (path.startsWith('..') || path.includes('node_modules/')) return;
+    if (!existsSync(join(workspace, path))) return;
     seen.add(path);
     files.push(path);
+  };
+  for (const hint of (playbookMatch && playbookMatch.files_hint) || []) {
     if (files.length === MAX_FILES) break;
+    add(String(hint).replace(/^\.?\//, ''));
+  }
+  const candidates = report.replace(/\\/g, '/').match(/[A-Za-z0-9_./-]+\.[A-Za-z]{1,6}/g) || [];
+  for (const candidate of candidates) {
+    if (files.length === MAX_FILES) break;
+    add(candidate.replace(/^\.?\//, ''));
   }
   return files;
 }
@@ -106,21 +172,39 @@ function stageOutput() {
 function sources() {
   const report = process.env.ERROR_REPORT || '';
   const context = process.env.REPO_CONTEXT || '';
-  const files = resolveFiles(report);
+  const playbook = readPlaybook();
+  const match = matchPlaybook(playbook, report);
+  const files = resolveFiles(report, match);
   if (!files.length) {
-    console.error('no file in the stack trace exists in this checkout — nothing to fix');
+    if (match) {
+      console.error(`the playbook matched "${match.signature}" but names no file that exists in this checkout, and the stack points at nothing here — nothing to fix`);
+    } else {
+      console.error('no file in the stack trace exists in this checkout — nothing to fix');
+    }
     process.exit(1);
   }
   const sourceFiles = {};
   for (const file of files) {
     sourceFiles[file] = readFileSync(join(workspace, file), 'utf8').slice(0, MAX_FILE_CHARS);
   }
+  // Only the matched entry goes to the pipeline: the whole playbook is the
+  // consumer's configuration, and the model is told about the one issue
+  // this error is.
+  const entry = match ? {
+    signature: match.signature,
+    approach: String(match.approach || ''),
+    files_hint: (match.files_hint || []).map(String),
+    needs_location: match.needs_location !== false,
+  } : {};
   emit('inputs_json', JSON.stringify({
     error_report: report.slice(0, 20000),
     source_files: sourceFiles,
     repo_context: context.slice(0, 4000),
+    playbook: entry,
   }));
+  emit('playbook_json', JSON.stringify(entry));
   console.log(`resolved ${files.length} file(s) from the stack: ${files.join(', ')}`);
+  if (match) console.log(`playbook matched: ${match.signature}`);
 }
 
 /** `apply` — the fix, applied to the checkout, and the pull request's text. */
@@ -128,6 +212,15 @@ function apply() {
   const report = process.env.ERROR_REPORT || '';
   let analysis = {};
   let fix = {};
+  let playbook = {};
+  try {
+    playbook = JSON.parse(process.env.PLAYBOOK_JSON || '{}') || {};
+  } catch {
+    // A playbook that does not parse is the `sources` step's failure, not
+    // this one's: by the time a fix is applied, the playbook has already
+    // been read once.
+    playbook = {};
+  }
   try {
     const parsed = JSON.parse(stageOutput());
     analysis = parsed.analysis || {};
@@ -196,6 +289,10 @@ function apply() {
   const title = (rootCause ? `fix(${path}): ${rootCause}` : `fix: ${path}`).slice(0, 120);
 
   const body = ['## What broke', '', '~~~', report.trim().slice(0, 2000), '~~~', ''];
+  if (playbook.signature) {
+    body.push('## Known issue', '', `**Signature:** \`${playbook.signature}\``, '');
+    if (playbook.approach) body.push(String(playbook.approach), '');
+  }
   if (analysis && Object.keys(analysis).length) {
     body.push('## What the pipeline thinks', '');
     if (analysis.error_class) body.push(`**Error class:** \`${analysis.error_class}\``);

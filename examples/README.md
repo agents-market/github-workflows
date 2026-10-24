@@ -121,6 +121,14 @@ What it does with the error is the part worth knowing:
   request, called explicitly: GitHub does not run workflows for a pull request
   opened by its own token.
 
+Not every error has a position. A failed dynamic import — `Load failed` in
+Safari — happens before there is a stack frame to point at. For those, keep a
+`.error-playbook.json` in your repository: the errors you already know about
+and the fix each of them gets. A matched entry names the files the fix
+belongs in, and the pipeline is told the recipe instead of guessing. The
+format is in the
+[pipeline README](../pipelines/error-autofix/README.md#the-playbook).
+
 The workflow fetches the script that resolves the stack and applies the fix
 from this repository, at the `latest` tag — the same promise the review
 workflow makes. To pin it, set `AI_AUTOFIX_REF` to a commit SHA.

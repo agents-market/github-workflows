@@ -1,6 +1,6 @@
 ---
 name: error-autofix
-version: 1.0.0
+version: 1.1.0
 description: |
   AI error autofixer — takes a production error (message + stack trace) and the
   source files it points at, and returns the root cause, a concrete fix (the
@@ -51,6 +51,48 @@ them it says so instead of guessing.
 | `error_report` | string (1..20000 chars) | **required** | The error as production produced it: message + stack trace |
 | `source_files` | object | **required** | `{path: contents}` — the files the stack points at |
 | `repo_context` | string (0..4000 chars) | `""` | What the service is, which framework, the conventions to follow |
+| `playbook` | object | `{}` | The consumer's own record of a known issue that this error matched |
+
+## The playbook
+
+Not every error has a position. A failed dynamic import — `Load failed` in
+Safari, `Failed to fetch dynamically imported module` in Chrome — happens
+before there is a stack frame to point at, and there is nothing to resolve.
+The playbook is the answer: the consumer writes down the errors they already
+know about and the fix each of them gets, and the pipeline is told about the
+one that matched.
+
+It is configuration, not code. The pipeline and the workflow are the same in
+every consumer's repository; the specifics of a consumer's errors live in the
+consumer's own file. The reference wiring reads it from
+`.error-playbook.json` in the repository root:
+
+```json
+{
+  "issues": [
+    {
+      "signature": "Load failed",
+      "match": "contains",
+      "approach": "The lazy chunk is gone after a deploy: catch the failed import and reload once, guarded by a sessionStorage flag.",
+      "files_hint": ["src/pages/_app.tsx"],
+      "needs_location": false
+    }
+  ]
+}
+```
+
+| Key | Meaning |
+|-----|---------|
+| `signature` | What to match against the error. Required. |
+| `match` | `contains` (default, the message only), `exact` (the message only), or `regex` (the whole report) |
+| `approach` | The fix the consumer expects, in their words |
+| `files_hint` | The files the fix belongs in |
+| `needs_location` | `false` when the error carries no position at all — the analysis then reports line `0` instead of inventing one |
+
+The first entry that matches wins, so the order in the file is the order of
+precedence. The reference wiring matches the signature itself, in code: a
+model deciding whether an error is a known issue is a model that decides
+differently twice.
 
 ## Output envelope
 
@@ -128,7 +170,8 @@ provider and model today.
       {
         "error_report": "TypeError: ...\n    at getName (src/api/users.ts:42:18)",
         "source_files": { "src/api/users.ts": "export function getName(user) {...}" },
-        "repo_context": "Node 20, TypeScript, vitest for tests."
+        "repo_context": "Node 20, TypeScript, vitest for tests.",
+        "playbook": {}
       }
 ```
 
