@@ -30,7 +30,7 @@ official yet — no matter how good it is.
 
 Everything below follows from three laws. When they conflict with convenience,
 they win. The third was added on 2026-10-18, after finding that
-six of our own eighteen stages were paying for a model call to do
+six of our own twenty stages were paying for a model call to do
 arithmetic.
 
 ### Law 1 — Minimum friction
@@ -175,7 +175,7 @@ a clean directory with an empty npm cache, on 2026-10-18.
 | One command downloads and runs | `npx @agentsmarket/cli pipeline call style-review@3.1.0 --local --inputs '{...}'` installs and runs on CLI 0.12.4 + runtime 0.5.2, returning real findings for a real diff | **closed** |
 | A first-ever command works | Both `style-review@3.1.0` and `style-review@v3.1.0` resolve; the v-prefix is accepted | **closed** |
 | The CLI a consumer gets is installable | 0.12.3 shipped `workspace:*` verbatim and could not be installed at all (`EUNSUPPORTEDPROTOCOL`). Fixed in 0.12.4, which `publish.sh` now prevents | closed; 0.12.3 is dead weight for 72h |
-| Every stage does the minimum work | At least 6 of 18 stages are software paying for an LLM call; `analyze_vulns` asks a model to recall CVEs | **open — see the audit below** |
+| Every stage does the minimum work | At least 6 of 20 stages are software paying for an LLM call; `analyze_vulns` asks a model to recall CVEs | **open — see the audit below** |
 | Paid server-side invocation works | `pipeline call` without `--local` fails at payment: `INVALID_LINK: shared_link does not match derivation`, on 0.12.2 and 0.12.4 alike | **open — pre-existing, server-side** |
 | Consumer file is five lines | 18 lines; the `on:`/`permissions`/`secrets` header is the rest | needs a CI system that allows `uses:` at workflow top level |
 | Examples exist for the website | `examples/README.md` and `workflows/ai-code-review.yml`, both run against the live marketplace | **closed** |
@@ -313,10 +313,17 @@ database.
 
 ### What this costs us if we ignore it
 
-Of 18 stages across the six pipelines, **at least 6 are software wearing an LLM
+Of 20 stages across the seven pipelines, **at least 6 are software wearing an LLM
 cost**, and one — `analyze_vulns` — is actively unsafe in this form. The
 aggregate stages alone account for roughly a third of the spend on every review,
 to compute numbers a calculator would get right.
+
+The two stages of `error-autofix` are the other end of the same line: reading a
+stack trace and saying which line is wrong is judgement, and the model is the
+right tool for it. Writing the replacement is judgement too — but the *diff* is
+not, so the pipeline answers with the text to replace and the text to put
+there, and software writes the patch. The caller refuses a fix whose old text
+is not in the file, which is a question with an answer.
 
 `test-generator` is the visible symptom. Its `aggregate_to_test_file` fails
 about one run in three on a large diff, always the same way: the model answers

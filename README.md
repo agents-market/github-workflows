@@ -45,6 +45,7 @@ generated from that spec, and a `test.yaml` describing expected output.
 | [`api-design-reviewer`](pipelines/api-design-reviewer/) | API spec | 3 |
 | [`documentation-generator`](pipelines/documentation-generator/) | source diff | 3 |
 | [`test-generator`](pipelines/test-generator/) | source diff | 3 |
+| [`error-autofix`](pipelines/error-autofix/) | production error + the files it points at | 2 |
 
 Published versions live in the [marketplace](https://agentsmarket.world); the
 publish workflow bumps them and writes them back into `pipeline.yaml`.
@@ -53,13 +54,17 @@ The first two came from the `agents-market/code-review` migration. The other
 four were promoted out of `agents-market/main/examples/` on 2026-10-17, after
 every example was run end-to-end against a real MiniMax-M3: of 20, ten execute,
 and these four cover four different input domains. The examples that did not
-execute are withdrawn from the catalogue.
+execute are withdrawn from the catalogue. The seventh,
+[`error-autofix`](pipelines/error-autofix/), is the first one that reads an
+error instead of a diff — it answers with the text to replace and the text to
+put there, and the caller writes the patch.
 
-**All six share one shape** — `structured_json` at every hop, three stages
+**All seven share one shape** — `structured_json` at every hop, three stages
 except the security audit, which reads its own first pass a second time to
-catch what that pass missed. What differs is the input, not the design. Treat
-them as one pattern with six front-ends until something genuinely multi-stage
-(a loop, a fan-out, a tool call) runs reliably enough to be canonical.
+catch what that pass missed, and `error-autofix`, which has two. What differs
+is the input, not the design. Treat them as one pattern with seven front-ends
+until something genuinely multi-stage (a loop, a fan-out, a tool call) runs
+reliably enough to be canonical.
 
 Nothing executes `test.yaml` today: `agentsmarket pipeline test` is disabled in
 the CLI for 0.10.0. The files are written down so the expectations are
@@ -87,6 +92,20 @@ pipelines are released on their own schedule; `focus_area` and
 (`security` for the audit, `all` for style). `advisory` is a string, `"false"`
 by default: a failing pipeline fails the job, so a broken review is visible
 rather than silently green. Pass `"true"` to downgrade that to a warning.
+
+A caller that has a diff and no pull request passes it as `code_diff`, and the
+review lands in the job summary instead of on a pull request. That is the
+seam the next example uses.
+
+[`workflows/ai-error-autofix.yml`](workflows/ai-error-autofix.yml) is the
+other file adopters paste, and it is the first one that acts rather than
+reports: an error from production goes in, a pull request with the fix and a
+test comes out — or, when the fix is not mechanical, an issue with the
+analysis. The `error-autofix` pipeline does the judgement; the workflow owns
+the token, the branch and the pull request. The pull request it opens is
+reviewed by the same canonical review as every other pull request, called
+explicitly, because GitHub does not run workflows for a pull request opened by
+its own token.
 
 For wiring a pipeline directly rather than through the review workflow, see
 `agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)`.
@@ -206,7 +225,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md). External contributions welcome via PR 
 ## Status
 
 - **Migration from `agents-market/code-review`**: complete. See [TASKS row 114](https://github.com/agents-market/main/blob/main/TASKS.md#row-114) for the epic plan.
-- **Canonical pipelines**: six, all live — see [`pipelines/`](#pipelines--canonical-pipelines). Two migrated from `code-review`; four promoted from `examples/` after a real-model audit.
+- **Canonical pipelines**: seven, all live — see [`pipelines/`](#pipelines--canonical-pipelines). Two migrated from `code-review`; four promoted from `examples/` after a real-model audit; one that reads a production error instead of a diff.
 
 ## Removed
 

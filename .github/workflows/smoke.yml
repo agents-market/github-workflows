@@ -76,6 +76,47 @@ jobs:
       - name: The example is structurally sound
         run: python3 .github/scripts/check-workflows.py workflows
 
+      # The GitLab side has its own file and its own reader, and nothing
+      # else in this repository exercises them: a note that renders "undefined"
+      # where the file name belongs is invisible until a client runs it.
+      #
+      # The runtime is installed by its own step because two checks need it,
+      # and a check that installs its own dependency is a check whose
+      # dependency can go missing without anyone noticing.
+      - name: Install the published runtime
+        run: npm install --no-save --no-audit --no-fund @agentsmarket/pipeline-runtime@latest yaml
+
+      - name: The GitLab review renders what it says
+        run: node scripts/check-gitlab-review.mjs
+
+      # The autofix script is the half of the workflow that decides what to
+      # change and whether the change is safe to open as a pull request. It is
+      # checked against a throwaway repository, including the cases where the
+      # fix must not be applied.
+      - name: The autofix applies the fix, and refuses the ones it cannot
+        run: node scripts/check-error-autofix.mjs
+
+      # The autofix example fetches its script from this repository at a ref.
+      # A ref that does not resolve fails every job of every repository that
+      # pasted the file, and the person who pasted it cannot tell that the
+      # fault is ours.
+      #
+      # The commit, not the tag: `latest` moves to this revision only after
+      # this test has passed, so asking for `latest` here would test the
+      # previous revision — and fail on the very run that is supposed to
+      # publish the script.
+      - name: The autofix script the example fetches is there
+        run: |
+          set -euo pipefail
+          grep -q 'raw.githubusercontent.com/agents-market/github-workflows/${AI_AUTOFIX_REF}/scripts/error-autofix.mjs' \
+            workflows/ai-error-autofix.yml \
+            || { echo "::error::the example no longer fetches scripts/error-autofix.mjs"; exit 1; }
+          URL="https://raw.githubusercontent.com/agents-market/github-workflows/${GITHUB_SHA}/scripts/error-autofix.mjs"
+          curl -fsSL "$URL" -o "$RUNNER_TEMP/error-autofix.mjs"
+          head -1 "$RUNNER_TEMP/error-autofix.mjs" | grep -q '^#!' \
+            || { echo "::error::$URL did not return the autofix script"; exit 1; }
+          echo "autofix script is served: $URL"
+
       # The example is what people paste. If the ref it names does not exist,
       # every paste fails in the first job, in every repository, at once — and
       # the person who pasted it has no way of knowing the fault is ours.
@@ -83,36 +124,36 @@ jobs:
       # A placeholder is the same failure with extra steps, so it is refused
       # here too: `<full-commit-sha>` is not a ref, and a ref that does not
       # resolve is not a ref either.
-      - name: The example we publish actually resolves
+      #
+      # Every example, not one: the autofix example calls the reusable review
+      # workflow, and a ref that does not resolve there fails the same way.
+      - name: The examples we publish actually resolve
         run: |
           set -euo pipefail
-          REF=$(python3 -c "
-          import yaml
-          d = yaml.safe_load(open('workflows/ai-code-review.yml'))
-          for j in d['jobs'].values():
-              u = str(j.get('uses', ''))
-              if u.startswith('agents-market/github-workflows/'):
-                  print(u.split('@', 1)[1]); raise SystemExit
-          raise SystemExit('no uses: ref in the example')
-          ")
-          case "$REF" in
-            *"<"*|*">"*)
-              echo "::error::the example names a placeholder, not a ref: $REF"; exit 1;;
-          esac
           URL=https://github.com/agents-market/github-workflows.git
-          git ls-remote --exit-code --tags "$URL" "refs/tags/$REF" >/dev/null \
-            || git ls-remote --exit-code --heads "$URL" "refs/heads/$REF" >/dev/null \
-            || { echo "::error::the example names $REF, which does not resolve in agents-market/github-workflows"; exit 1; }
-          echo "example resolves: $REF"
-
-      # The GitLab side has its own file and its own reader, and nothing
-      # else in this repository exercises them: a note that renders "undefined"
-      # where the file name belongs is invisible until a client runs it.
-      - name: The GitLab review renders what it says
-        run: |
-          set -euo pipefail
-          npm install --no-save --no-audit --no-fund @agentsmarket/pipeline-runtime@latest yaml
-          node scripts/check-gitlab-review.mjs
+          REFS=$(python3 -c "
+          import glob, yaml
+          refs = set()
+          for path in sorted(glob.glob('workflows/*.yml')):
+              d = yaml.safe_load(open(path))
+              for j in (d.get('jobs') or {}).values():
+                  u = str(j.get('uses', ''))
+                  if u.startswith('agents-market/github-workflows/'):
+                      refs.add(u.split('@', 1)[1])
+          if not refs:
+              raise SystemExit('no example names a ref to this repository')
+          print(' '.join(sorted(refs)))
+          ")
+          for REF in $REFS; do
+            case "$REF" in
+              *"<"*|*">"*)
+                echo "::error::an example names a placeholder, not a ref: $REF"; exit 1;;
+            esac
+            git ls-remote --exit-code --tags "$URL" "refs/tags/$REF" >/dev/null \
+              || git ls-remote --exit-code --heads "$URL" "refs/heads/$REF" >/dev/null \
+              || { echo "::error::an example names $REF, which does not resolve in agents-market/github-workflows"; exit 1; }
+            echo "example resolves: $REF"
+          done
 
       - uses: actions/setup-node@v5
         with:

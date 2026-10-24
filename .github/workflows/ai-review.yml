@@ -55,6 +55,16 @@ on:
           keep testing the pipelines while a release is broken.'
         required: false
         type: string
+      code_diff:
+        description: >-
+          'Review this diff instead of the one the pull request carries. Used
+          by a caller that has a diff before it has a pull request — the
+          error-autofix workflow, which fixes an error and then asks for the
+          fix to be reviewed. Unset on a pull request: the diff is collected
+          from git, and a caller that has neither gets the empty diff and a
+          run that says so.'
+        required: false
+        type: string
     secrets:
       MINIMAX_API_KEY:
         required: true
@@ -182,13 +192,21 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
           FOCUS: ${{ matrix.pipeline.focus_area }}
           SEVERITY: ${{ matrix.pipeline.severity }}
+          # The caller's diff, when it has one. A caller that has a diff and
+          # no pull request — the error-autofix workflow — has nothing to
+          # collect from git, so it passes the diff it already has.
+          PROVIDED: ${{ inputs.code_diff }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "$BASE" "$HEAD" 2>/dev/null || true
-          D=$(git diff --no-color "$BASE...$HEAD" 2>/dev/null || true)
-          [ -n "$D" ] || D=$(git diff --no-color HEAD~1 HEAD 2>/dev/null || true)
-          [ -n "$D" ] || D="(empty diff)"
-          printf '%s' "${D:0:48000}" > /tmp/d.txt
+          if [ -n "$PROVIDED" ]; then
+            printf '%s' "${PROVIDED:0:48000}" > /tmp/d.txt
+          else
+            git fetch --no-tags origin "$BASE" "$HEAD" 2>/dev/null || true
+            D=$(git diff --no-color "$BASE...$HEAD" 2>/dev/null || true)
+            [ -n "$D" ] || D=$(git diff --no-color HEAD~1 HEAD 2>/dev/null || true)
+            [ -n "$D" ] || D="(empty diff)"
+            printf '%s' "${D:0:48000}" > /tmp/d.txt
+          fi
           python3 -c "
           import json, os
           d = open('/tmp/d.txt', encoding='utf-8', errors='replace').read()
@@ -269,6 +287,70 @@ jobs:
           # `tee`, so the message is in the run log too. A summary-only write leaves
           # no trace where a reader looks first.
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # A review without a pull request has nowhere to post. The summary
+      # comment and the inline threads both need a pull request number, and a
+      # caller that has a diff and no pull request — the error-autofix
+      # workflow, which has just written a fix — has neither. So the report
+      # goes to the job summary, which is where a human looks first.
+      #
+      # The push case is left out on purpose: the step above already records
+      # a review that did not complete there, and two messages saying the
+      # same thing is noise.
+      - name: Record the review in the job summary
+        if: always() && (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch')
+        continue-on-error: true
+        env:
+          MARKER: ${{ matrix.pipeline.slug }}
+          RESULT: ${{ steps.review_retry.outputs.result_json || steps.review.outputs.result_json }}
+          COST: ${{ steps.review_retry.outputs.total_cost_usdc || steps.review.outputs.total_cost_usdc }}
+          DURATION: ${{ steps.review_retry.outputs.total_ms || steps.review.outputs.total_ms }}
+          RUN_STATUS: ${{ steps.review_retry.outputs.status || steps.review.outputs.status }}
+        run: |
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os
+
+          marker = os.environ.get("MARKER", "")
+          raw = os.environ.get("RESULT") or ""
+          status = os.environ.get("RUN_STATUS") or "no status"
+
+          def num(name):
+              try:
+                  return float(os.environ.get(name) or 0)
+              except ValueError:
+                  return 0.0
+
+          # `result_json` is a record of stage id → output text, and the
+          # narrative report is one field of one stage's output. The stage
+          # names are the pipeline's business; the field is the contract.
+          report = ""
+          try:
+              for value in json.loads(raw).values():
+                  try:
+                      parsed = json.loads(value)
+                  except Exception:
+                      continue
+                  if isinstance(parsed, dict) and isinstance(parsed.get("markdown_report"), str):
+                      report = parsed["markdown_report"]
+          except Exception:
+              pass
+
+          print(f"### AI Review — {marker}")
+          print()
+          if not raw:
+              print(f"⚠️ The review did not complete (`{status}`). The review is")
+              print("**missing**, not clean.")
+          else:
+              print("| Metric | Value |")
+              print("|---|---:|")
+              print(f"| Duration | {num('DURATION') / 1000:.1f}s |")
+              print(f"| Market-equivalent cost | {num('COST'):.6f} USDC |")
+              print()
+              print(report[:8000] if report else "_This pipeline emits no narrative report._")
+          print()
+          print("> Cost is a market-rate estimate of the tokens consumed. This pipeline")
+          print("> ran locally in the Actions runner — **nothing was charged**.")
+          PY
 
       # The counts in the report are counted here, by code, from the same array
       # that produces the inline comments. Never by the model — a model that

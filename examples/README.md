@@ -91,7 +91,41 @@ to set them:
 | `severity` | per pipeline | Minimum severity reported — read the note below |
 | `advisory` | `'false'` | `'true'` reports findings without failing the job |
 
-## 4. The same review on GitLab
+## 4. Fix an error from production, automatically
+
+The error goes in, a pull request with the fix and a test comes out. Copy
+[`workflows/ai-error-autofix.yml`](../workflows/ai-error-autofix.yml) to
+`.github/workflows/ai-error-autofix.yml` in your repository and add the same
+one secret, `MINIMAX_API_KEY`. The trigger is yours to choose:
+
+```yaml
+on:
+  repository_dispatch:
+    types: [production_error]
+```
+
+and it also runs by hand (`workflow_dispatch`) with an error pasted in. The
+permissions it needs are the ones it asks for: `contents: write` to push the
+fix branch, `pull-requests: write` to open the pull request, `issues: write`
+to open the issue when the fix is not mechanical.
+
+What it does with the error is the part worth knowing:
+
+- the `error-autofix` pipeline says what is wrong and what to change;
+- the workflow applies the change only when it is mechanical — one file, the
+  text to replace present exactly once, a test written — and opens a pull
+  request;
+- anything else becomes an **issue** with the analysis attached, because a pull
+  request nobody can review is worse than an issue;
+- the pull request is reviewed by the same AI review as every other pull
+  request, called explicitly: GitHub does not run workflows for a pull request
+  opened by its own token.
+
+The workflow fetches the script that resolves the stack and applies the fix
+from this repository, at the `latest` tag — the same promise the review
+workflow makes. To pin it, set `AI_AUTOFIX_REF` to a commit SHA.
+
+## 5. The same review on GitLab
 
 GitLab does not run GitHub Actions, so the wiring there is its own file:
 [`workflows/gitlab-code-review.yml`](../workflows/gitlab-code-review.yml).
@@ -131,7 +165,7 @@ not a guarantee.
 
 ## What is available
 
-Six pipelines, all published and all installable by the commands above:
+Seven pipelines, all published and all installable by the commands above:
 
 | Pipeline | What it does |
 |---|---|
@@ -141,6 +175,7 @@ Six pipelines, all published and all installable by the commands above:
 | `test-generator` | Generate tests for a diff |
 | `documentation-generator` | Generate or update documentation for changed code |
 | `api-design-reviewer` | Review API surface and contract changes |
+| `error-autofix` | Turn a production error into a fix and a reproducing test |
 
 The full catalogue is at [agentsmarket.world/pipelines](https://agentsmarket.world/pipelines/),
 and each pipeline's own README describes its inputs and outputs.
