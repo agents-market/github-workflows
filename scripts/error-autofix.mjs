@@ -1,14 +1,24 @@
 #!/usr/bin/env node
-// The two mechanical halves of the error-autofix workflow.
+// The mechanical halves of the error-autofix workflow.
 //
-//   node error-autofix.mjs sources   the pipeline's inputs, from a stack trace
-//   node error-autofix.mjs apply     the fix, applied to the checkout
+//   node error-autofix.mjs sources    the pipeline's inputs, from a stack trace
+//   node error-autofix.mjs apply      the fix, applied to the checkout
+//   node error-autofix.mjs publish    the pull request, or the issue it becomes
+//   node error-autofix.mjs report     the issue, when there is no pull request
+//   node error-autofix.mjs sweep      the daily check: did the fix stop it?
 //
 // Both halves are code, on purpose. The model is asked what is wrong and what
 // to change; deciding which files the error points at, whether the fix can be
 // applied unambiguously, and what the pull request says is arithmetic and
 // text, and that belongs to a program. A model asked to produce a diff
 // produces a diff that does not apply.
+//
+// The same is true of the policy around the bot: one pull request per error
+// class, a ceiling on how many fixes may be open at once, and the daily
+// check that a merged fix actually stopped the error. Those are rules about
+// GitHub, they change rarely, and they are the rules most likely to be
+// wrong — so they are in a file with a test rather than in a shell block
+// nobody can run twice.
 //
 // The script writes its results to $GITHUB_OUTPUT, the way a workflow step
 // writes what the next step reads. Without that variable it prints them, so
@@ -29,6 +39,16 @@ const MAX_FILES = 3;
 const MAX_FILE_CHARS = 12000;
 // The consumer's own record of known issues, when they keep one.
 const PLAYBOOK_DEFAULT = '.error-playbook.json';
+// The labels the bot puts on what it opens, so a person can tell what came
+// from it and the daily sweep can find its own work.
+const PR_LABEL = 'auto-fix';
+const ISSUE_LABEL = 'needs-review';
+// How many fixes may be open at once before the next one becomes an issue.
+// A queue of fixes nobody merges is worth less than a queue of issues
+// somebody reads.
+const MAX_OPEN_PRS_DEFAULT = 3;
+// How long the daily check looks back.
+const LOOKBACK_DAYS_DEFAULT = 7;
 
 const command = process.argv[2];
 const workspace = resolve(process.argv[3] || process.cwd());
@@ -642,9 +662,251 @@ function apply() {
   emit('probe', probe);
 }
 
+// ---------------------------------------------------------------------------
+// The policy around the bot.
+//
+// Everything below talks to GitHub through `gh`, which the runner has. The
+// calls are collected in one place so that a rule can be read in one place
+// too, and so the checks can put a `gh` of their own on the PATH and see
+// exactly what the script asked for.
+// ---------------------------------------------------------------------------
+
+/** Run `gh`. Returns its output, or null when the call was allowed to fail. */
+function gh(args, { allowFailure = false } = {}) {
+  try {
+    return execFileSync('gh', args, {
+      cwd: workspace,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    if (allowFailure) return null;
+    const detail = String(e.stderr || e.message || '').trim().slice(0, 300);
+    throw new Error(`gh ${args.join(' ')} failed: ${detail}`);
+  }
+}
+
+/**
+ * A list from GitHub, as an array.
+ *
+ * The fields are named per call, because a list of pull requests and a list
+ * of issues do not carry the same ones.
+ */
+function ghList(args, fields) {
+  const raw = gh([...args, '--json', fields]);
+  try {
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    // A list that does not parse is a list we cannot read, and a list we
+    // cannot read is not an empty list: an empty list would say "nothing is
+    // open", and that is one of the answers that must never be invented.
+    throw new Error(`gh ${args.join(' ')} did not answer with a list`);
+  }
+}
+
+/** The marker the body carries: `<!-- error-probe: ... -->`. */
+function markerOf(body, name) {
+  const pattern = new RegExp(`<!--\\s*${name}:\\s*(.*?)\\s*-->`, 'g');
+  let found = null;
+  let match;
+  while ((match = pattern.exec(String(body || ''))) !== null) found = match[1];
+  return found;
+}
+
+/** The label exists. A label that cannot be created is not fatal. */
+function ensureLabel(repo, name, color, description) {
+  gh(['label', 'create', name, '--repo', repo, '--color', color, '--description', description],
+    { allowFailure: true });
+}
+
+/** The branch the pull request goes to. */
+function baseBranch(repo) {
+  if (process.env.BASE_BRANCH) return process.env.BASE_BRANCH;
+  const raw = gh(['repo', 'view', '--repo', repo, '--json', 'defaultBranchRef'], { allowFailure: true });
+  try {
+    return JSON.parse(raw || '{}').defaultBranchRef?.defaultBranch || 'main';
+  } catch {
+    return 'main';
+  }
+}
+
+/**
+ * `publish` — the pull request.
+ *
+ * Three rules, in this order, and each of them replaces the pull request
+ * with something less intrusive:
+ *
+ *   1. one pull request per error class. The branch is named after the
+ *      error's signature, so a second run of the same error pushes to the
+ *      same branch and the open pull request updates itself.
+ *   2. a ceiling. Past MAX_OPEN_PRS open fixes, this one becomes an issue.
+ *   3. a pull request that cannot be opened becomes an issue too: the fix
+ *      is on the branch either way, and a fix that is only on a branch that
+ *      nobody can open is a fix that is lost.
+ */
+function publish() {
+  const repo = process.env.REPO || '';
+  const branch = process.env.BRANCH || '';
+  const title = process.env.TITLE || '';
+  let body = process.env.BODY || '';
+  const maxOpen = Number(process.env.MAX_OPEN_PRS || MAX_OPEN_PRS_DEFAULT);
+  if (!repo || !branch) throw new Error('REPO and BRANCH are required to publish');
+
+  if (process.env.REVIEW_RESULT === 'failure') {
+    body += '\n\n> The AI review did not complete — this fix is un-reviewed. See the run.';
+  }
+
+  ensureLabel(repo, PR_LABEL, '0E8A16', 'A fix this workflow opened from a production error');
+
+  const existing = ghList(['pr', 'list', '--repo', repo, '--head', branch, '--state', 'open'], 'number');
+  if (existing.length) {
+    const number = existing[0].number;
+    console.log(`an open pull request already fixes this error class: #${number}`);
+    gh(['pr', 'comment', String(number), '--repo', repo,
+      '--body', 'The same error fired again. The branch carries the newest attempt.'], { allowFailure: true });
+    emit('outcome', 'duplicate');
+    return;
+  }
+
+  const open = ghList(['pr', 'list', '--repo', repo, '--state', 'open', '--label', PR_LABEL], 'number');
+  if (open.length >= maxOpen) {
+    console.log(`::notice::${open.length} fixes are already open and the ceiling is ${maxOpen} — this one becomes an issue.`);
+    ensureLabel(repo, ISSUE_LABEL, 'FBCA04', 'An error that needs a human');
+    gh(['issue', 'create', '--repo', repo, '--title', title, '--body', body, '--label', ISSUE_LABEL],
+      { allowFailure: true });
+    emit('outcome', 'over-ceiling');
+    return;
+  }
+
+  const created = gh([
+    'pr', 'create', '--repo', repo, '--base', baseBranch(repo), '--head', branch,
+    '--title', title, '--body', body, '--label', PR_LABEL,
+  ], { allowFailure: true });
+
+  if (created === null) {
+    console.log('::warning::the pull request could not be opened — the fix is filed as an issue instead');
+    ensureLabel(repo, ISSUE_LABEL, 'FBCA04', 'An error that needs a human');
+    const note = `${body}\n\nThe fix is on the branch \`${branch}\`. A pull request could not be opened: the repository does not let GitHub Actions create them.`;
+    gh(['issue', 'create', '--repo', repo, '--title', title, '--body', note, '--label', ISSUE_LABEL],
+      { allowFailure: true });
+    emit('outcome', 'issue');
+    return;
+  }
+  emit('outcome', 'pr');
+}
+
+/**
+ * `report` — the issue, for an error that has no mechanical fix.
+ *
+ * One issue per error class too: the same failure, twice, is one thing to
+ * look at. The signature is in the body as a marker, and an empty signature
+ * matches nothing — so it is not compared.
+ */
+function report() {
+  const repo = process.env.REPO || '';
+  const title = process.env.TITLE || 'Error from production';
+  const body = process.env.BODY || '';
+  const signature = process.env.SIGNATURE || '';
+  if (!repo) throw new Error('REPO is required to report');
+
+  ensureLabel(repo, ISSUE_LABEL, 'FBCA04', 'An error that needs a human');
+
+  if (signature) {
+    const open = ghList(['issue', 'list', '--repo', repo, '--state', 'open', '--label', ISSUE_LABEL], 'number,body');
+    const duplicate = open.find((issue) => String(issue.body || '').includes(`error-signature: ${signature}`));
+    if (duplicate) {
+      console.log(`an open issue already carries this error class: #${duplicate.number}`);
+      gh(['issue', 'comment', String(duplicate.number), '--repo', repo, '--body', 'The same error fired again.'],
+        { allowFailure: true });
+      emit('outcome', 'duplicate');
+      return;
+    }
+  }
+
+  gh(['issue', 'create', '--repo', repo, '--title', title, '--body', body, '--label', ISSUE_LABEL],
+    { allowFailure: true });
+  emit('outcome', 'issue');
+}
+
+/**
+ * `sweep` — the daily check: did the merged fix stop the error?
+ *
+ * A fix that did not fix anything is worth more as an issue than as a merged
+ * pull request. The question is asked of the consumer's feed: the text of
+ * the error appears in the answer while the error is still firing.
+ *
+ * A feed that does not answer fails the sweep loudly. An empty feed would
+ * say every error stopped firing, and that is the one answer that must never
+ * be invented.
+ */
+async function sweep() {
+  const repo = process.env.REPO || '';
+  const feed = process.env.ERROR_FEED_URL || '';
+  const days = Number(process.env.VERIFY_LOOKBACK_DAYS || LOOKBACK_DAYS_DEFAULT);
+  if (!repo) throw new Error('REPO is required to sweep');
+
+  if (!feed) {
+    console.log('::notice::ERROR_FEED_URL is not set — there is nothing to check the fixes against.');
+    emit('outcome', 'no-feed');
+    return;
+  }
+
+  let text = '';
+  try {
+    const response = await fetch(feed, { signal: AbortSignal.timeout(30000) });
+    if (!response.ok) throw new Error(`the feed answered ${response.status}`);
+    text = await response.text();
+  } catch (e) {
+    console.error(`::error::the error feed ${feed} did not answer — the fixes were not checked`);
+    process.exit(1);
+  }
+
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const merged = ghList([
+    'pr', 'list', '--repo', repo, '--state', 'merged', '--label', PR_LABEL, '--search', `merged:>=${since}`,
+  ], 'number,body');
+  console.log(`checking ${merged.length} merged fix(es) from ${since}`);
+
+  let opened = 0;
+  for (const pull of merged) {
+    const probe = markerOf(pull.body, 'error-probe');
+    if (!probe) continue;
+    if (!text.includes(probe)) {
+      console.log(`#${pull.number}: the error stopped firing`);
+      continue;
+    }
+    console.log(`#${pull.number}: the error is still firing`);
+    const signature = markerOf(pull.body, 'error-signature') || '';
+    const open = ghList(['issue', 'list', '--repo', repo, '--state', 'open', '--label', ISSUE_LABEL], 'number,body');
+    const tracked = signature
+      ? open.find((issue) => String(issue.body || '').includes(`error-signature: ${signature}`))
+      : null;
+    if (tracked) {
+      console.log(`  already tracked by #${tracked.number}`);
+      continue;
+    }
+    const note = [
+      `The fix in #${pull.number} was merged, and the error it was for is still firing.`,
+      '', `**Error:** ${probe}`, `**Signature:** ${signature}`, '',
+      'Checked against the error feed. Either the fix addressed a different cause, or the cause is somewhere else.',
+    ].join('\n');
+    ensureLabel(repo, ISSUE_LABEL, 'FBCA04', 'An error that needs a human');
+    gh(['issue', 'create', '--repo', repo,
+      '--title', `The error is still firing after the fix was merged (#${pull.number})`,
+      '--body', note, '--label', ISSUE_LABEL], { allowFailure: true });
+    opened++;
+  }
+  emit('outcome', 'swept');
+  emit('opened', String(opened));
+}
+
 if (command === 'sources') await sources();
 else if (command === 'apply') apply();
+else if (command === 'publish') publish();
+else if (command === 'report') report();
+else if (command === 'sweep') await sweep();
 else {
-  console.error('usage: error-autofix.mjs <sources|apply> [workspace]');
+  console.error('usage: error-autofix.mjs <sources|apply|publish|report|sweep> [workspace]');
   process.exit(2);
 }

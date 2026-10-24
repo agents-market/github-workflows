@@ -16,7 +16,7 @@
 // explanation and nobody can tell why.
 
 import { execFile, execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -564,6 +564,241 @@ function shaped(schema) {
   }
   check('a map that will not serve fails loudly', failed);
   check('the failure says the position was not resolved', message.includes('source map'), message.slice(0, 200));
+}
+
+// ---------------------------------------------------------------------------
+// The policy around the bot.
+//
+// A `gh` of our own on the PATH answers these, so the rules can be seen
+// working instead of described: one pull request per error class, a ceiling
+// on how many fixes may be open at once, the issue that replaces a pull
+// request the repository will not let us open, and the daily sweep that asks
+// whether the merged fix stopped the error.
+// ---------------------------------------------------------------------------
+
+const PROBE = "TypeError: Cannot read properties of null (reading 'name')";
+const PR_BODY = [
+  'The fix.',
+  '',
+  '<!-- error-signature: TypeError@src/users.ts -->',
+  `<!-- error-probe: ${PROBE} -->`,
+].join('\n');
+
+// A `gh` that answers from a state file and writes down what it was asked.
+// The state is what GitHub would say; the log is what the script did.
+const FAKE_GH = `#!/usr/bin/env node
+const fs = require('fs');
+const args = process.argv.slice(2);
+const state = JSON.parse(fs.readFileSync(process.env.GH_STATE, 'utf8'));
+fs.appendFileSync(process.env.GH_LOG, JSON.stringify(args) + '\\n');
+const print = (value) => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value));
+const after = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : null);
+const kind = args[0];
+const action = args[1];
+if (kind === 'label' && action === 'create') { print('label created'); process.exit(0); }
+if (kind === 'repo' && action === 'view') { print({ defaultBranchRef: { defaultBranch: state.default_branch || 'main' } }); process.exit(0); }
+if (kind === 'pr' && action === 'list') {
+  const head = after('--head');
+  if (head) print((state.prs_by_head || {})[head] || []);
+  else if (after('--state') === 'merged') print(state.merged_prs || []);
+  else print(state.open_prs || []);
+  process.exit(0);
+}
+if (kind === 'pr' && action === 'create') {
+  if (state.pr_create_fails) {
+    process.stderr.write('GraphQL: Resource not accessible by integration\\n');
+    process.exit(1);
+  }
+  print('https://github.com/' + (after('--repo') || 'o/r') + '/pull/99');
+  process.exit(0);
+}
+if (kind === 'issue' && action === 'list') { print(state.open_issues || []); process.exit(0); }
+if (kind === 'issue' && action === 'create') { print('https://github.com/' + (after('--repo') || 'o/r') + '/issues/101'); process.exit(0); }
+if ((kind === 'pr' || kind === 'issue') && action === 'comment') { print('commented'); process.exit(0); }
+process.stderr.write('fake gh: unknown command: ' + args.join(' ') + '\\n');
+process.exit(2);
+`;
+
+/** A `gh` on the PATH, answering from `state`. */
+function fakeGh(state = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'autofix-gh-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin, { recursive: true });
+  const stateFile = join(dir, 'state.json');
+  const logFile = join(dir, 'calls.log');
+  writeFileSync(stateFile, JSON.stringify(state));
+  writeFileSync(logFile, '');
+  const path = join(bin, 'gh');
+  writeFileSync(path, FAKE_GH);
+  chmodSync(path, 0o755);
+  return {
+    env: { PATH: `${bin}:${process.env.PATH}`, GH_STATE: stateFile, GH_LOG: logFile },
+    calls: () => readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)),
+  };
+}
+
+/** The environment a publish/report run needs. */
+const PUBLISH_ENV = {
+  REPO: 'owner/repo',
+  BRANCH: 'fix/auto-12345678',
+  TITLE: 'fix(src/users.ts): the null user',
+  BODY: PR_BODY,
+  SIGNATURE: 'TypeError@src/users.ts',
+};
+
+// 21. A fix with no pull request yet opens one.
+{
+  const gh = fakeGh({});
+  const { outputs } = run('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  const calls = gh.calls();
+  check('a fix with no pull request opens one', outputs.outcome === 'pr', String(outputs.outcome));
+  check('the pull request is created', calls.some((c) => c[0] === 'pr' && c[1] === 'create'));
+  check('the pull request carries the branch', calls.some((c) => c[0] === 'pr' && c[1] === 'create' && c.includes('fix/auto-12345678')));
+  check('the pull request is labelled as the bot\'s', calls.some((c) => c[0] === 'pr' && c[1] === 'create' && c.includes('auto-fix')));
+}
+
+// 22. The same error class does not open a second pull request: the branch is
+//     named after the error, so the open one is updated instead.
+{
+  const gh = fakeGh({ prs_by_head: { 'fix/auto-12345678': [{ number: 7 }] } });
+  const { outputs } = run('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  const calls = gh.calls();
+  check('the same error class does not open a second pull request', outputs.outcome === 'duplicate', String(outputs.outcome));
+  check('no second pull request is created', !calls.some((c) => c[0] === 'pr' && c[1] === 'create'));
+  check('the open pull request is told the error fired again', calls.some((c) => c[0] === 'pr' && c[1] === 'comment' && c.includes('7')));
+}
+
+// 23. The ceiling. A queue of fixes nobody merges is worth less than a queue
+//     of issues somebody reads.
+{
+  const gh = fakeGh({ open_prs: [{ number: 1 }, { number: 2 }, { number: 3 }] });
+  const { outputs } = run('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  const calls = gh.calls();
+  check('past the ceiling the fix becomes an issue', outputs.outcome === 'over-ceiling', String(outputs.outcome));
+  check('no pull request is opened past the ceiling', !calls.some((c) => c[0] === 'pr' && c[1] === 'create'));
+  check('the issue is labelled for a human', calls.some((c) => c[0] === 'issue' && c[1] === 'create' && c.includes('needs-review')));
+}
+
+// 24. A pull request the repository will not let us open. The fix is on the
+//     branch either way, and a fix that is only on a branch is a fix that is
+//     lost.
+{
+  const gh = fakeGh({ pr_create_fails: true });
+  const { outputs } = run('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  const calls = gh.calls();
+  const issue = calls.find((c) => c[0] === 'issue' && c[1] === 'create');
+  check('a pull request that cannot be opened becomes an issue', outputs.outcome === 'issue', String(outputs.outcome));
+  check('the issue names the branch the fix is on', Boolean(issue) && issue.join(' ').includes('fix/auto-12345678'));
+}
+
+// 25. The same error class does not open a second issue either.
+{
+  const gh = fakeGh({ open_issues: [{ number: 5, body: '<!-- error-signature: TypeError@src/users.ts -->' }] });
+  const { outputs } = run('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
+  const calls = gh.calls();
+  check('the same error class does not open a second issue', outputs.outcome === 'duplicate', String(outputs.outcome));
+  check('no second issue is created', !calls.some((c) => c[0] === 'issue' && c[1] === 'create'));
+  check('the open issue is told the error fired again', calls.some((c) => c[0] === 'issue' && c[1] === 'comment' && c.includes('5')));
+}
+
+// 26. An error nobody has an issue for opens one.
+{
+  const gh = fakeGh({ open_issues: [] });
+  const { outputs } = run('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
+  const calls = gh.calls();
+  check('an error nobody has an issue for opens one', outputs.outcome === 'issue', String(outputs.outcome));
+  check('the issue is labelled for a human', calls.some((c) => c[0] === 'issue' && c[1] === 'create' && c.includes('needs-review')));
+}
+
+// 27. The daily sweep: the merged fix did not stop the error.
+{
+  const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end(`still failing: ${PROBE}\n`);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  server.unref();
+  try {
+    const { outputs } = await runAsync('sweep', makeRepo(), {
+      ...gh.env,
+      REPO: 'owner/repo',
+      ERROR_FEED_URL: `http://127.0.0.1:${server.address().port}/errors`,
+    });
+    const calls = gh.calls();
+    check('an error that is still firing opens an issue', outputs.opened === '1', String(outputs.opened));
+    check('the issue names the pull request that did not fix it', calls.some((c) => c[0] === 'issue' && c[1] === 'create' && c.join(' ').includes('#3')));
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+}
+
+// 28. The merged fix stopped the error: nothing to say.
+{
+  const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end('nothing is failing right now\n');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  server.unref();
+  try {
+    const { outputs } = await runAsync('sweep', makeRepo(), {
+      ...gh.env,
+      REPO: 'owner/repo',
+      ERROR_FEED_URL: `http://127.0.0.1:${server.address().port}/errors`,
+    });
+    check('a fixed error opens nothing', outputs.opened === '0', String(outputs.opened));
+    check('no issue is opened for a fixed error', !gh.calls().some((c) => c[0] === 'issue' && c[1] === 'create'));
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+}
+
+// 29. A feed that does not answer. An empty feed would say every error
+//     stopped firing, and that is the one answer that must never be invented.
+{
+  const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
+  let failed = false;
+  let message = '';
+  try {
+    await runAsync('sweep', makeRepo(), {
+      ...gh.env,
+      REPO: 'owner/repo',
+      ERROR_FEED_URL: 'http://127.0.0.1:1/errors',
+    });
+  } catch (e) {
+    failed = true;
+    message = String(e.stderr || e.message || '');
+  }
+  check('a feed that does not answer fails the sweep', failed);
+  check('the failure says the fixes were not checked', message.includes('did not answer'), message.slice(0, 200));
+  check('a feed that does not answer opens no issue', !gh.calls().some((c) => c[0] === 'issue' && c[1] === 'create'));
+}
+
+// 30. The contract: the workflow files call commands that exist. A command
+//     that does not exist is a job that fails for everybody who pastes the
+//     file, and the person who pasted it cannot tell the fault is ours.
+{
+  let usage = '';
+  try {
+    execFileSync('node', [SCRIPT], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    usage = String(e.stderr || '');
+  }
+  const dir = join(HERE, '..', 'workflows');
+  const files = readdirSync(dir).filter((name) => name.endsWith('.yml'));
+  let checked = 0;
+  for (const file of files) {
+    const text = readFileSync(join(dir, file), 'utf8');
+    for (const [, command] of text.matchAll(/error-autofix\.mjs"\s+(\w+)/g)) {
+      checked++;
+      check(`${file} calls a command that exists: ${command}`, usage.includes(command));
+    }
+  }
+  check('the workflows call the script at all', checked > 0, `${checked} calls`);
 }
 
 console.log(failures ? `\n${failures} checks failed` : '\nall checks passed');
