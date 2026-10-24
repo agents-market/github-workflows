@@ -174,9 +174,15 @@ function bundlePath(target) {
  * registry of builds is needed.
  *
  * Two places to look: the checkout (MAPS_DIR — a build that keeps its maps
- * next to the bundles) and a URL (MAPS_BASE_URL — the private bucket the
- * maps live in, which is where they belong when the sources must not be
- * public).
+ * next to the bundles) and a URL (MAPS_BASE_URL — where the maps live when
+ * the sources must not be public).
+ *
+ * The base URL is the directory the maps live in, not the root of the site:
+ * the map of "https://site/js/app.js" is "<base>/js/app.js.map", so a
+ * deployment that keeps its maps under a prefix puts that prefix in the
+ * base. The maps are often private, and the base is then an endpoint of the
+ * consumer's own — MAPS_TOKEN is what it wants, and a map that needs a key
+ * the consumer did not give is a map that is not there.
  */
 async function loadMap(target) {
   const path = bundlePath(target);
@@ -194,8 +200,11 @@ async function loadMap(target) {
   }
   const base = (process.env.MAPS_BASE_URL || '').replace(/\/+$/, '');
   if (!base) return null;
+  const token = process.env.MAPS_TOKEN || '';
   try {
-    const response = await fetch(`${base}/${path}.map`);
+    const response = await fetch(`${base}/${path}.map`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (!response.ok) return null;
     return await response.json();
   } catch {

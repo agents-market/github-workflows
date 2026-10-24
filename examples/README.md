@@ -143,6 +143,12 @@ from your checkout (`MAPS_DIR`) or from a URL (`MAPS_BASE_URL`, a repository
 variable). Without a map the position is not resolved, and the run says so
 instead of guessing.
 
+`MAPS_BASE_URL` is the directory the maps live in, not the root of your site:
+the map of `https://site/js/app.js` is `<base>/js/app.js.map`, so a deployment
+that keeps its maps under a prefix puts that prefix in the base. The maps are
+usually private, so the base is an endpoint of yours and it may want a token —
+`MAPS_TOKEN`, a secret.
+
 The workflow fetches the script that resolves the stack and applies the fix
 from this repository, at the `latest` tag — the same promise the review
 workflow makes. To pin it, set `AI_AUTOFIX_REF` to a commit SHA.

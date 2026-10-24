@@ -15,11 +15,13 @@
 // nothing and reports no error — the workflow opens an issue with no
 // explanation and nobody can tell why.
 
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 // The published runtime is what actually executes a pipeline, and the `yaml`
 // package parses the spec. Both are installed by the smoke test:
@@ -154,6 +156,23 @@ function run(command, repo, env) {
     encoding: 'utf8',
   });
   return { outputs: parseOutputs(readFileSync(outFile, 'utf8')), stdout };
+}
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * The same, without blocking.
+ *
+ * The checks that serve a map over HTTP need it: `execFileSync` blocks the
+ * event loop, so the server in this process could not answer the script it
+ * had just started.
+ */
+async function runAsync(command, repo, env) {
+  const outFile = join(repo, `github-output-${command}-${counter++}`);
+  await execFileAsync('node', [SCRIPT, command, repo], {
+    env: { ...process.env, GITHUB_OUTPUT: outFile, ...env },
+  });
+  return { outputs: parseOutputs(readFileSync(outFile, 'utf8')) };
 }
 
 // 1. The stack trace becomes the pipeline's inputs.
@@ -474,6 +493,77 @@ function shaped(schema) {
   });
   check('a known issue is signed by its name', outputs.signature === 'Load failed', String(outputs.signature));
   check('the probe is the name too', outputs.probe === 'Load failed', String(outputs.probe));
+}
+
+// 19. The map over a URL. The base is the directory the maps live in — a
+//     deployment that keeps them under a prefix puts that prefix in the
+//     base — and the maps are private, so the endpoint wants a token.
+{
+  const repo = makeRepo();
+  copyFixture(repo, 'source-map');
+  const map = readFileSync(join(repo, 'maps/js/app-7fJ3k2Q1.js.map'), 'utf8');
+  const server = createServer((req, res) => {
+    const authorized = req.headers.authorization === 'Bearer maps-key';
+    if (authorized && req.url === '/private/maps/js/app-7fJ3k2Q1.js.map') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(map);
+      return;
+    }
+    res.writeHead(404);
+    res.end('no map here');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  // The server must not keep the process alive: `close()` alone waits for
+  // the keep-alive socket the fetch left behind.
+  server.unref();
+  const base = `http://127.0.0.1:${server.address().port}/private/maps`;
+  try {
+    const { outputs } = await runAsync('sources', repo, {
+      ERROR_REPORT: BUNDLE_STACK,
+      MAPS_BASE_URL: base,
+      MAPS_TOKEN: 'maps-key',
+    });
+    const locations = JSON.parse(outputs.location_json || '[]');
+    check('the map is fetched over a URL', locations[0]?.file === 'src/app.js', JSON.stringify(locations));
+    check('the position over a URL comes from the map', locations[0]?.line === 7);
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+}
+
+// 20. A map that needs a key the consumer did not give is a map that is
+//     not there: the position is not resolved, and the run says so.
+{
+  const repo = makeRepo();
+  copyFixture(repo, 'source-map');
+  const server = createServer((req, res) => {
+    if (req.headers.authorization === 'Bearer maps-key') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(readFileSync(join(repo, 'maps/js/app-7fJ3k2Q1.js.map'), 'utf8'));
+      return;
+    }
+    res.writeHead(401);
+    res.end('who are you');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  // The server must not keep the process alive: `close()` alone waits for
+  // the keep-alive socket the fetch left behind.
+  server.unref();
+  const base = `http://127.0.0.1:${server.address().port}/private/maps`;
+  let failed = false;
+  let message = '';
+  try {
+    await runAsync('sources', repo, { ERROR_REPORT: BUNDLE_STACK, MAPS_BASE_URL: base });
+  } catch (e) {
+    failed = true;
+    message = String(e.stderr || e.message || '');
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+  check('a map that will not serve fails loudly', failed);
+  check('the failure says the position was not resolved', message.includes('source map'), message.slice(0, 200));
 }
 
 console.log(failures ? `\n${failures} checks failed` : '\nall checks passed');

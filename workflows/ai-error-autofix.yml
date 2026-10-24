@@ -151,6 +151,12 @@ jobs:
       # (MAPS_DIR) or from a URL (MAPS_BASE_URL). Without a map the position
       # is not resolved, and the run says so instead of guessing.
       #
+      # MAPS_BASE_URL is the directory the maps live in, not the root of the
+      # site: the map of "https://site/js/app.js" is "<base>/js/app.js.map".
+      # A deployment that keeps its maps under a prefix puts that prefix in
+      # the base. The maps are usually private, so the base is an endpoint of
+      # yours and it may want a token — MAPS_TOKEN, a secret.
+      #
       # The frames are walked in order and the first one in your own code
       # wins: the top frame of a "Failed to fetch" sits inside the SDK that
       # was called, and the code to change is further down.
@@ -169,6 +175,7 @@ jobs:
           PLAYBOOK_FILE: ${{ inputs.playbook_path || github.event.client_payload.playbook_path || '.error-playbook.json' }}
           MAPS_BASE_URL: ${{ inputs.maps_base_url || vars.MAPS_BASE_URL }}
           MAPS_DIR: ${{ vars.MAPS_DIR }}
+          MAPS_TOKEN: ${{ secrets.MAPS_TOKEN }}
         run: |
           set -euo pipefail
           node "$RUNNER_TEMP/error-autofix.mjs" sources "$GITHUB_WORKSPACE"
