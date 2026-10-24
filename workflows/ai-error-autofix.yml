@@ -36,6 +36,11 @@ on:
         required: false
         type: string
         default: '.error-playbook.json'
+      maps_base_url:
+        description: 'Optional: the URL your source maps are readable under. The map of a bundle is its own path with ".map" added.'
+        required: false
+        type: string
+        default: ''
   # Your error reporter calls this:
   #   gh api repos/<owner>/<repo>/dispatches \
   #     -f event_type=production_error -f client_payload[error_report]='...'
@@ -120,6 +125,17 @@ jobs:
       # The stack trace is resolved to files by code, not by the model: the
       # model is asked to fix code, not to find it.
       #
+      # A minified bundle has no path to take: "js/app-HASH.js:1:141" means
+      # nothing without the source map. So the frames are walked, and each
+      # frame that points at a bundle is resolved through that bundle's map —
+      # the bundle's own path with ".map" added, read from your checkout
+      # (MAPS_DIR) or from a URL (MAPS_BASE_URL). Without a map the position
+      # is not resolved, and the run says so instead of guessing.
+      #
+      # The frames are walked in order and the first one in your own code
+      # wins: the top frame of a "Failed to fetch" sits inside the SDK that
+      # was called, and the code to change is further down.
+      #
       # The playbook is your file with the errors you already know about and
       # the fix each of them gets. It is optional, and it is yours: the
       # specifics of your errors live in your repository, not in this
@@ -132,6 +148,8 @@ jobs:
           ERROR_REPORT: ${{ inputs.error_report || github.event.client_payload.error_report }}
           REPO_CONTEXT: ${{ inputs.repo_context || github.event.client_payload.repo_context }}
           PLAYBOOK_FILE: ${{ inputs.playbook_path || github.event.client_payload.playbook_path || '.error-playbook.json' }}
+          MAPS_BASE_URL: ${{ inputs.maps_base_url || vars.MAPS_BASE_URL }}
+          MAPS_DIR: ${{ vars.MAPS_DIR }}
         run: |
           set -euo pipefail
           node "$RUNNER_TEMP/error-autofix.mjs" sources "$GITHUB_WORKSPACE"
@@ -157,6 +175,7 @@ jobs:
           RESULT_JSON: ${{ steps.autofix.outputs.result_json }}
           ERROR_REPORT: ${{ inputs.error_report || github.event.client_payload.error_report }}
           PLAYBOOK_JSON: ${{ steps.sources.outputs.playbook_json }}
+          LOCATION_JSON: ${{ steps.sources.outputs.location_json }}
         run: |
           set -euo pipefail
           node "$RUNNER_TEMP/error-autofix.mjs" apply "$GITHUB_WORKSPACE"

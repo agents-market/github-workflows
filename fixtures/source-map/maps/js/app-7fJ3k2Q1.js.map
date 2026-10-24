@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../node_modules/@aws-sdk/identity/index.js", "../src/app.js"],
+  "sourcesContent": ["export async function getId() {\n  throw new TypeError(\"Failed to fetch\");\n}\n", "import { getId } from \"../node_modules/@aws-sdk/identity/index.js\";\n\nexport async function computeCognitoIdentity(wallet) {\n  const region = \"eu-central-1\";\n  const poolId = \"eu-central-1:8975\";\n  if (!wallet) {\n    const id = await getId();\n    return { wallet, region, poolId, id };\n  }\n  return { wallet, region, poolId };\n}\n"],
+  "mappings": "AAAA,eAAsBA,GAAQ,CAC5B,MAAM,IAAI,UAAU,iBAAiB,CACvC,CCAA,eAAsBC,EAAuBC,EAAQ,CACnD,IAAMC,EAAS,eACTC,EAAS,oBACf,GAAI,CAACF,EAAQ,CACX,IAAMG,EAAK,MAAMC,EAAM,EACvB,MAAO,CAAE,OAAAJ,EAAQ,OAAAC,EAAQ,OAAAC,EAAQ,GAAAC,CAAG,CACtC,CACA,MAAO,CAAE,OAAAH,EAAQ,OAAAC,EAAQ,OAAAC,CAAO,CAClC",
+  "names": ["getId", "computeCognitoIdentity", "wallet", "region", "poolId", "id", "getId"]
+}

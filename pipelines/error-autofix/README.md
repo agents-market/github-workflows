@@ -138,6 +138,10 @@ else is an issue with the analysis attached. The reference wiring is
 [`workflows/ai-error-autofix.yml`](../../workflows/ai-error-autofix.yml) in this
 repository.
 
+Resolving a minified bundle to a source file is the caller's job too: it
+needs the source map, and the map is the consumer's. The pipeline is given
+the files, and the line to look at.
+
 ## Installation
 
 ```bash

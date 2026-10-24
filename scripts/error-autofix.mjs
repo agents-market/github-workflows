@@ -59,6 +59,16 @@ function inside(candidate) {
   return full === root || full.startsWith(root + sep);
 }
 
+/** A JSON value from the environment, or the fallback when it is not one. */
+function safeJson(text, fallback) {
+  try {
+    const value = JSON.parse(text || '');
+    return value ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * The consumer's playbook: the errors they know about and the fix each of
  * them gets.
@@ -115,6 +125,204 @@ function matchPlaybook(playbook, report) {
 }
 
 /**
+ * The stack frames of a report, in order.
+ *
+ * "at fn (url:line:col)" and "at url:line:col" — the two shapes browsers
+ * and Node write. The order matters: the frame that matters is often not
+ * the first one.
+ */
+function parseFrames(report) {
+  const frames = [];
+  const pattern = /\(([^()\s]+):(\d+):(\d+)\)|at\s+([^\s()]+):(\d+):(\d+)/g;
+  for (const match of report.matchAll(pattern)) {
+    const target = match[1] ?? match[4];
+    if (!target) continue;
+    frames.push({
+      url: target,
+      line: Number(match[2] ?? match[5]),
+      column: Number(match[3] ?? match[6]),
+    });
+  }
+  return frames;
+}
+
+/** A frame's target as a path in this checkout, when it is one. */
+function localPath(target) {
+  const clean = String(target).replace(/^file:\/\//, '');
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(clean)) return null;
+  const path = clean.replace(/^\.\//, '').replace(/^\/+/, '');
+  return path && existsSync(join(workspace, path)) ? path : null;
+}
+
+/** The path of a bundle: "https://site/js/app-HASH.js" → "js/app-HASH.js". */
+function bundlePath(target) {
+  let path;
+  try {
+    path = new URL(String(target)).pathname;
+  } catch {
+    return null;
+  }
+  path = path.replace(/^\/+/, '');
+  return path && path.includes('/') ? path : null;
+}
+
+/**
+ * The source map of a bundle, or null when there is none.
+ *
+ * The map is the bundle's own path with ".map" added. The name of a bundle
+ * carries the hash of the build, so the map of a build is unique and no
+ * registry of builds is needed.
+ *
+ * Two places to look: the checkout (MAPS_DIR — a build that keeps its maps
+ * next to the bundles) and a URL (MAPS_BASE_URL — the private bucket the
+ * maps live in, which is where they belong when the sources must not be
+ * public).
+ */
+async function loadMap(target) {
+  const path = bundlePath(target);
+  if (!path) return null;
+  const dir = process.env.MAPS_DIR || '';
+  if (dir) {
+    const local = join(workspace, dir, `${path}.map`);
+    if (existsSync(local)) {
+      try {
+        return JSON.parse(readFileSync(local, 'utf8'));
+      } catch {
+        return null;
+      }
+    }
+  }
+  const base = (process.env.MAPS_BASE_URL || '').replace(/\/+$/, '');
+  if (!base) return null;
+  try {
+    const response = await fetch(`${base}/${path}.map`);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    // A map that cannot be fetched is a map that is not there. The honest
+    // answer is that the position was not resolved.
+    return null;
+  }
+}
+
+const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** One VLQ segment: base64 digits, five bits each, the last one the sign. */
+function decodeVlq(segment) {
+  const values = [];
+  let value = 0;
+  let shift = 0;
+  for (const char of segment) {
+    const digit = BASE64.indexOf(char);
+    if (digit < 0) break;
+    value += (digit & 31) * 2 ** shift;
+    if (digit & 32) {
+      shift += 5;
+      continue;
+    }
+    const magnitude = Math.floor(value / 2);
+    values.push(value & 1 ? -magnitude : magnitude);
+    value = 0;
+    shift = 0;
+  }
+  return values;
+}
+
+/**
+ * The mappings of a source map, per generated line.
+ *
+ * The map is read here rather than through a library: the workflow that runs
+ * this script installs no packages, and a resolver that needs an install is
+ * a resolver that breaks on a bad day at the registry. The format is
+ * source map v3, and `sections` (index maps) are not supported — a map we
+ * cannot read is a map we do not have.
+ */
+function parseMappings(map) {
+  const sources = map.sources || [];
+  const lines = [];
+  let sourceIndex = 0;
+  let sourceLine = 0;
+  let sourceColumn = 0;
+  for (const line of String(map.mappings || '').split(';')) {
+    let generatedColumn = 0;
+    const segments = [];
+    for (const segment of line.split(',')) {
+      if (!segment) continue;
+      const fields = decodeVlq(segment);
+      if (!fields.length) continue;
+      generatedColumn += fields[0];
+      if (fields.length < 4) {
+        // A segment with no source behind it.
+        segments.push({ generatedColumn, source: null });
+        continue;
+      }
+      sourceIndex += fields[1];
+      sourceLine += fields[2];
+      sourceColumn += fields[3];
+      segments.push({
+        generatedColumn,
+        source: sources[sourceIndex] ?? null,
+        line: sourceLine + 1,
+        column: sourceColumn,
+      });
+    }
+    lines.push(segments);
+  }
+  return { root: map.sourceRoot || '', lines };
+}
+
+/**
+ * The original position of a generated position, through a source map.
+ *
+ * The column in a stack trace is 1-based (verified on V8) and a source map
+ * counts from 0, so the column is decremented here — once, where the two
+ * meet.
+ */
+function originalPosition(map, line, column) {
+  const parsed = parseMappings(map);
+  const segments = parsed.lines[line - 1];
+  if (!segments || !segments.length) return null;
+  let found = null;
+  for (const segment of segments) {
+    if (segment.generatedColumn > column) break;
+    found = segment;
+  }
+  if (!found || !found.source) return null;
+  return {
+    source: parsed.root ? `${parsed.root}/${found.source}` : found.source,
+    line: found.line,
+    column: found.column,
+  };
+}
+
+/**
+ * The file in this checkout that a source map names.
+ *
+ * A map's sources are relative to wherever the build ran: "../src/app.js",
+ * "webpack://app/./src/app.js", an absolute path on the build machine. The
+ * checkout has the file under some suffix of that path, so every suffix is
+ * tried, longest first.
+ */
+function findInRepo(source) {
+  const clean = String(source)
+    .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, '')
+    .replace(/^\.\//, '')
+    .replace(/^\/+/, '');
+  const parts = clean.split('/').filter((part) => part && part !== '..');
+  for (let i = 0; i < parts.length; i++) {
+    const candidate = parts.slice(i).join('/');
+    if (candidate && existsSync(join(workspace, candidate))) return candidate;
+  }
+  return null;
+}
+
+/** A source that belongs to a dependency, not to the consumer's own code. */
+function isVendor(source) {
+  const clean = String(source).replace(/\\/g, '/');
+  return /(^|\/)node_modules\//.test(clean) || /(^|\/)@[^/]+\//.test(clean);
+}
+
+/**
  * The files the stack trace points at.
  *
  * The paths are read out of the error text by pattern, and a path is taken
@@ -122,10 +330,15 @@ function matchPlaybook(playbook, report) {
  * it is asked to fix code, and a file it cannot see is a file it would
  * invent.
  *
- * The playbook comes first: when the consumer has written down a known
- * issue, the files they name for it are the ones the fix belongs in.
+ * A minified bundle has no path to take: the stack points at
+ * "js/app-HASH.js:1:141", and the position in it means nothing without the
+ * source map. So the frames are walked, and each one that points at a bundle
+ * is resolved through that bundle's map. The frames are walked in order and
+ * the first one that lands in the consumer's own code wins: the top frame of
+ * a "Failed to fetch" sits inside the SDK that was called, and the code to
+ * change is further down, where the SDK was called from.
  */
-function resolveFiles(report, playbookMatch) {
+async function resolveFiles(report, playbookMatch) {
   const files = [];
   const seen = new Set();
   const add = (path) => {
@@ -135,16 +348,62 @@ function resolveFiles(report, playbookMatch) {
     seen.add(path);
     files.push(path);
   };
+
+  const frames = parseFrames(report);
+  const locations = [];
+  let vendorSkipped = 0;
+  let unresolved = 0;
+  let bundles = 0;
+  for (const frame of frames) {
+    if (files.length >= MAX_FILES) break;
+    const local = localPath(frame.url);
+    if (local) {
+      add(local);
+      locations.push({ file: local, line: frame.line, column: frame.column, via: 'stack' });
+      continue;
+    }
+    if (!/^https?:\/\//i.test(frame.url)) continue;
+    bundles++;
+    const map = await loadMap(frame.url);
+    if (!map) {
+      unresolved++;
+      continue;
+    }
+    const position = originalPosition(map, frame.line, frame.column);
+    if (!position) {
+      unresolved++;
+      continue;
+    }
+    if (isVendor(position.source)) {
+      vendorSkipped++;
+      continue;
+    }
+    const file = findInRepo(position.source);
+    if (!file) {
+      unresolved++;
+      continue;
+    }
+    add(file);
+    locations.push({ file, line: position.line, column: position.column, via: 'source map' });
+  }
+
+  // The paths in the text, for the reports whose frames are not in a shape
+  // this script reads.
+  if (!files.length) {
+    const candidates = report.replace(/\\/g, '/').match(/[A-Za-z0-9_./-]+\.[A-Za-z]{1,6}/g) || [];
+    for (const candidate of candidates) {
+      if (files.length === MAX_FILES) break;
+      add(candidate.replace(/^\.?\//, ''));
+    }
+  }
+
+  // The playbook names the files for a known issue; it is the consumer's
+  // explicit intent, so it comes last, for what the stack did not say.
   for (const hint of (playbookMatch && playbookMatch.files_hint) || []) {
     if (files.length === MAX_FILES) break;
     add(String(hint).replace(/^\.?\//, ''));
   }
-  const candidates = report.replace(/\\/g, '/').match(/[A-Za-z0-9_./-]+\.[A-Za-z]{1,6}/g) || [];
-  for (const candidate of candidates) {
-    if (files.length === MAX_FILES) break;
-    add(candidate.replace(/^\.?\//, ''));
-  }
-  return files;
+  return { files, locations, vendorSkipped, unresolved, bundles };
 }
 
 /**
@@ -169,18 +428,30 @@ function stageOutput() {
 }
 
 /** `sources` — the pipeline's inputs, from a stack trace and a checkout. */
-function sources() {
+async function sources() {
   const report = process.env.ERROR_REPORT || '';
   const context = process.env.REPO_CONTEXT || '';
   const playbook = readPlaybook();
   const match = matchPlaybook(playbook, report);
-  const files = resolveFiles(report, match);
+  const resolved = await resolveFiles(report, match);
+  const files = resolved.files;
   if (!files.length) {
-    if (match) {
-      console.error(`the playbook matched "${match.signature}" but names no file that exists in this checkout, and the stack points at nothing here — nothing to fix`);
-    } else {
-      console.error('no file in the stack trace exists in this checkout — nothing to fix');
+    // Say what did not work out. "Nothing to fix" without a reason is the
+    // answer nobody can act on.
+    const why = [];
+    if (resolved.bundles) {
+      why.push('the stack points at a bundle, and a bundle without a source map has no position');
     }
+    if (resolved.vendorSkipped) {
+      why.push(`${resolved.vendorSkipped} frame(s) were in dependencies`);
+    }
+    if (resolved.unresolved) {
+      why.push(`${resolved.unresolved} frame(s) could not be resolved`);
+    }
+    if (match) {
+      why.push(`the playbook matched "${match.signature}" but names no file that exists in this checkout`);
+    }
+    console.error(`no file to fix: ${why.join('; ') || 'no file in the stack trace exists in this checkout'}`);
     process.exit(1);
   }
   const sourceFiles = {};
@@ -203,7 +474,11 @@ function sources() {
     playbook: entry,
   }));
   emit('playbook_json', JSON.stringify(entry));
+  emit('location_json', JSON.stringify(resolved.locations));
   console.log(`resolved ${files.length} file(s) from the stack: ${files.join(', ')}`);
+  for (const location of resolved.locations) {
+    console.log(`  ${location.file}:${location.line} (${location.via})`);
+  }
   if (match) console.log(`playbook matched: ${match.signature}`);
 }
 
@@ -303,6 +578,11 @@ function apply() {
       body.push('', `**At:** ${where}`);
     }
     if (analysis.explanation) body.push('', String(analysis.explanation));
+    const locations = safeJson(process.env.LOCATION_JSON, []);
+    if (locations.length) {
+      const where = locations.map((l) => `\`${l.file}:${l.line}\` (${l.via})`).join(', ');
+      body.push('', `**Resolved:** ${where}`);
+    }
     body.push('');
   }
   if (prReady) {
@@ -327,7 +607,7 @@ function apply() {
   emit('pr_ready', prReady ? 'true' : 'false');
 }
 
-if (command === 'sources') sources();
+if (command === 'sources') await sources();
 else if (command === 'apply') apply();
 else {
   console.error('usage: error-autofix.mjs <sources|apply> [workspace]');

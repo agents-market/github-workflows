@@ -16,7 +16,7 @@
 // explanation and nobody can tell why.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,6 +92,16 @@ const RESULT = JSON.stringify({
 
 const REPORT = "TypeError: Cannot read properties of null (reading 'name')\n    at getName (src/users.ts:2:18)";
 
+// A minified bundle, and the two frames it produced: the first inside a
+// dependency, the second in the consumer's own code. The columns are the
+// ones the fixture bundle really has — checked against the reference
+// implementation of source map v3.
+const BUNDLE_STACK = [
+  'TypeError: Failed to fetch',
+  '    at e (https://app.test/js/app-7fJ3k2Q1.js:1:26)',
+  '    at Module.u (https://app.test/js/app-7fJ3k2Q1.js:1:141)',
+].join('\n');
+
 /** A throwaway git repository with the files the stack traces point at. */
 function makeRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'autofix-'));
@@ -108,8 +118,15 @@ function makeRepo() {
   return dir;
 }
 
-/** Parse what a step wrote to $GITHUB_OUTPUT. */
-function parseOutputs(text) {
+/** Copy a fixture tree into the throwaway repository. */
+function copyFixture(repo, name) {
+  const from = join(HERE, '..', 'fixtures', name);
+  for (const entry of readdirSync(from)) {
+    cpSync(join(from, entry), join(repo, entry), { recursive: true });
+  }
+}
+
+/** Parse what a step wrote to $GITHUB_OUTPUT. */function parseOutputs(text) {
   const out = {};
   const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
@@ -389,6 +406,37 @@ function shaped(schema) {
   });
   check('the body names the known issue', String(outputs.body || '').includes('Load failed'));
   check('the body carries the approach', String(outputs.body || '').includes('Reload once.'));
+}
+
+// 14. A minified bundle has no path to take: the position in it means
+//     nothing without the source map. The frames are walked, the frame in
+//     the dependency is skipped, and the consumer's own code is found.
+{
+  const repo = makeRepo();
+  copyFixture(repo, 'source-map');
+  const { outputs } = run('sources', repo, { ERROR_REPORT: BUNDLE_STACK, MAPS_DIR: 'maps' });
+  const payload = JSON.parse(outputs.inputs_json);
+  check('the bundle is resolved to the source file', Object.keys(payload.source_files).join() === 'src/app.js', Object.keys(payload.source_files).join());
+  const locations = JSON.parse(outputs.location_json || '[]');
+  check('the resolved line is the line the map says', locations[0]?.line === 7, JSON.stringify(locations));
+  check('the resolution says where it came from', locations[0]?.via === 'source map');
+}
+
+// 15. No source map, no position. The run says that instead of guessing:
+//     a bundle without a map has no line in it.
+{
+  const repo = makeRepo();
+  copyFixture(repo, 'source-map');
+  let failed = false;
+  let message = '';
+  try {
+    run('sources', repo, { ERROR_REPORT: BUNDLE_STACK });
+  } catch (e) {
+    failed = true;
+    message = String(e.stderr || e.message || '');
+  }
+  check('a bundle with no source map fails loudly', failed);
+  check('the failure says the position was not resolved', message.includes('source map'), message.slice(0, 200));
 }
 
 console.log(failures ? `\n${failures} checks failed` : '\nall checks passed');

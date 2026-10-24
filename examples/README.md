@@ -129,6 +129,13 @@ belongs in, and the pipeline is told the recipe instead of guessing. The
 format is in the
 [pipeline README](../pipelines/error-autofix/README.md#the-playbook).
 
+And a minified bundle has no position either: `js/app-HASH.js:1:141` means
+nothing without the source map. The workflow resolves the frames through it —
+the map of a bundle is the bundle's own path with `.map` added — and reads it
+from your checkout (`MAPS_DIR`) or from a URL (`MAPS_BASE_URL`, a repository
+variable). Without a map the position is not resolved, and the run says so
+instead of guessing.
+
 The workflow fetches the script that resolves the stack and applies the fix
 from this repository, at the `latest` tag — the same promise the review
 workflow makes. To pin it, set `AI_AUTOFIX_REF` to a commit SHA.
