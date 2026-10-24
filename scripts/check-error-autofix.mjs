@@ -158,6 +158,21 @@ function run(command, repo, env) {
   return { outputs: parseOutputs(readFileSync(outFile, 'utf8')), stdout };
 }
 
+/**
+ * The same, but a failure is a failed check and not a crash.
+ *
+ * The command may not exist at all — a script that never learned it — and
+ * the answer to that has to be a red line in the report, not a stack trace
+ * that stops the rest of the checks from running.
+ */
+function tryRun(command, repo, env) {
+  try {
+    return { ...run(command, repo, env), failed: false };
+  } catch (e) {
+    return { outputs: {}, stdout: String(e.stderr || e.message || ''), failed: true };
+  }
+}
+
 const execFileAsync = promisify(execFile);
 
 /**
@@ -173,6 +188,15 @@ async function runAsync(command, repo, env) {
     env: { ...process.env, GITHUB_OUTPUT: outFile, ...env },
   });
   return { outputs: parseOutputs(readFileSync(outFile, 'utf8')) };
+}
+
+/** The same, without blocking, and a failure is a failed check. */
+async function tryRunAsync(command, repo, env) {
+  try {
+    return { ...(await runAsync(command, repo, env)), failed: false };
+  } catch (e) {
+    return { outputs: {}, stdout: String(e.stderr || e.message || ''), failed: true };
+  }
 }
 
 // 1. The stack trace becomes the pipeline's inputs.
@@ -649,7 +673,7 @@ const PUBLISH_ENV = {
 // 21. A fix with no pull request yet opens one.
 {
   const gh = fakeGh({});
-  const { outputs } = run('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  const { outputs } = tryRun('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
   const calls = gh.calls();
   check('a fix with no pull request opens one', outputs.outcome === 'pr', String(outputs.outcome));
   check('the pull request is created', calls.some((c) => c[0] === 'pr' && c[1] === 'create'));
@@ -661,7 +685,7 @@ const PUBLISH_ENV = {
 //     named after the error, so the open one is updated instead.
 {
   const gh = fakeGh({ prs_by_head: { 'fix/auto-12345678': [{ number: 7 }] } });
-  const { outputs } = run('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  const { outputs } = tryRun('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
   const calls = gh.calls();
   check('the same error class does not open a second pull request', outputs.outcome === 'duplicate', String(outputs.outcome));
   check('no second pull request is created', !calls.some((c) => c[0] === 'pr' && c[1] === 'create'));
@@ -672,7 +696,7 @@ const PUBLISH_ENV = {
 //     of issues somebody reads.
 {
   const gh = fakeGh({ open_prs: [{ number: 1 }, { number: 2 }, { number: 3 }] });
-  const { outputs } = run('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  const { outputs } = tryRun('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
   const calls = gh.calls();
   check('past the ceiling the fix becomes an issue', outputs.outcome === 'over-ceiling', String(outputs.outcome));
   check('no pull request is opened past the ceiling', !calls.some((c) => c[0] === 'pr' && c[1] === 'create'));
@@ -684,7 +708,7 @@ const PUBLISH_ENV = {
 //     lost.
 {
   const gh = fakeGh({ pr_create_fails: true });
-  const { outputs } = run('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  const { outputs } = tryRun('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
   const calls = gh.calls();
   const issue = calls.find((c) => c[0] === 'issue' && c[1] === 'create');
   check('a pull request that cannot be opened becomes an issue', outputs.outcome === 'issue', String(outputs.outcome));
@@ -694,7 +718,7 @@ const PUBLISH_ENV = {
 // 25. The same error class does not open a second issue either.
 {
   const gh = fakeGh({ open_issues: [{ number: 5, body: '<!-- error-signature: TypeError@src/users.ts -->' }] });
-  const { outputs } = run('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
+  const { outputs } = tryRun('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
   const calls = gh.calls();
   check('the same error class does not open a second issue', outputs.outcome === 'duplicate', String(outputs.outcome));
   check('no second issue is created', !calls.some((c) => c[0] === 'issue' && c[1] === 'create'));
@@ -704,7 +728,7 @@ const PUBLISH_ENV = {
 // 26. An error nobody has an issue for opens one.
 {
   const gh = fakeGh({ open_issues: [] });
-  const { outputs } = run('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
+  const { outputs } = tryRun('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
   const calls = gh.calls();
   check('an error nobody has an issue for opens one', outputs.outcome === 'issue', String(outputs.outcome));
   check('the issue is labelled for a human', calls.some((c) => c[0] === 'issue' && c[1] === 'create' && c.includes('needs-review')));
@@ -720,7 +744,7 @@ const PUBLISH_ENV = {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   server.unref();
   try {
-    const { outputs } = await runAsync('sweep', makeRepo(), {
+    const { outputs } = await tryRunAsync('sweep', makeRepo(), {
       ...gh.env,
       REPO: 'owner/repo',
       ERROR_FEED_URL: `http://127.0.0.1:${server.address().port}/errors`,
@@ -744,7 +768,7 @@ const PUBLISH_ENV = {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   server.unref();
   try {
-    const { outputs } = await runAsync('sweep', makeRepo(), {
+    const { outputs } = await tryRunAsync('sweep', makeRepo(), {
       ...gh.env,
       REPO: 'owner/repo',
       ERROR_FEED_URL: `http://127.0.0.1:${server.address().port}/errors`,
@@ -761,18 +785,12 @@ const PUBLISH_ENV = {
 //     stopped firing, and that is the one answer that must never be invented.
 {
   const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
-  let failed = false;
-  let message = '';
-  try {
-    await runAsync('sweep', makeRepo(), {
-      ...gh.env,
-      REPO: 'owner/repo',
-      ERROR_FEED_URL: 'http://127.0.0.1:1/errors',
-    });
-  } catch (e) {
-    failed = true;
-    message = String(e.stderr || e.message || '');
-  }
+  const { failed, stdout } = await tryRunAsync('sweep', makeRepo(), {
+    ...gh.env,
+    REPO: 'owner/repo',
+    ERROR_FEED_URL: 'http://127.0.0.1:1/errors',
+  });
+  const message = stdout;
   check('a feed that does not answer fails the sweep', failed);
   check('the failure says the fixes were not checked', message.includes('did not answer'), message.slice(0, 200));
   check('a feed that does not answer opens no issue', !gh.calls().some((c) => c[0] === 'issue' && c[1] === 'create'));
