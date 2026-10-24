@@ -13,6 +13,13 @@
 # GITHUB_TOKEN, which GitHub gives the run — there is no second secret to
 # store and nothing to leak.
 #
+# One repository setting has to be on, or the fix lands as an issue instead
+# of a pull request: Settings → Actions → General → Workflow permissions →
+# "Allow GitHub Actions to create and approve pull requests". An
+# organization can forbid it for every repository it owns, and then this
+# workflow files issues and pushes branches, which is the honest half of the
+# job.
+#
 # What it opens, and what it does not: the fix is applied only when it is
 # mechanical — one file, the old snippet present exactly once, a test written.
 # Everything else becomes an issue with the analysis attached, because a pull
@@ -280,9 +287,19 @@ jobs:
             exit 0
           fi
 
-          gh pr create --repo "$REPO" \
+          if ! gh pr create --repo "$REPO" \
             --base "${{ github.event.repository.default_branch }}" \
-            --head "$BRANCH" --title "$TITLE" --body "$BODY" --label auto-fix
+            --head "$BRANCH" --title "$TITLE" --body "$BODY" --label auto-fix; then
+            # The fix is on the branch either way. A repository that does not
+            # let GitHub Actions create pull requests — the organization may
+            # forbid it — gets the fix as an issue instead of losing it.
+            echo "::warning::the pull request could not be opened — the fix is filed as an issue instead"
+            gh label create needs-review --repo "$REPO" --color FBCA04 \
+              --description "An error that needs a human" 2>/dev/null || true
+            gh issue create --repo "$REPO" --title "$TITLE" \
+              --body "$(printf '%s\n\nThe fix is on the branch `%s`. A pull request could not be opened: the repository does not let GitHub Actions create them.' "$BODY" "$BRANCH")" \
+              --label needs-review
+          fi
 
       - name: Open an issue
         if: needs.fix.outputs.pr_ready != 'true'

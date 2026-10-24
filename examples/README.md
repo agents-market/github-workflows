@@ -109,6 +109,13 @@ permissions it needs are the ones it asks for: `contents: write` to push the
 fix branch, `pull-requests: write` to open the pull request, `issues: write`
 to open the issue when the fix is not mechanical.
 
+One repository setting has to be on, or the fix lands as an issue instead of
+a pull request: **Settings → Actions → General → Workflow permissions →
+"Allow GitHub Actions to create and approve pull requests"**. An
+organization can forbid it for every repository it owns. The workflow does
+not lose the fix when it is off — it pushes the branch and files the issue —
+but the pull request is the better half of the job.
+
 What it does with the error is the part worth knowing:
 
 - the `error-autofix` pipeline says what is wrong and what to change;
