@@ -1,0 +1,16 @@
+name: error-autofix mock test
+description: A production error resolves to one root cause and one fix in mock mode.
+pipeline: ./pipeline.yaml
+mock: true
+inputs:
+  error_report: "TypeError: Cannot read properties of null (reading 'name')\n    at getName (src/api/users.ts:42:18)"
+  source_files:
+    src/api/users.ts: "export function getName(user) {\n  const name = user.name;\n  return name;\n}\n"
+  repo_context: "Node 20, TypeScript, vitest for tests."
+assertions:
+  - type: exists
+    path: analyze_error.analysis
+  - type: exists
+    path: propose_fix.analysis
+  - type: exists
+    path: propose_fix.fix
