@@ -563,6 +563,28 @@ function apply() {
   const rootCause = String(analysis.root_cause || '').trim();
   const title = (rootCause ? `fix(${path}): ${rootCause}` : `fix: ${path}`).slice(0, 120);
 
+  // The signature is the error's class, not this occurrence of it: two
+  // occurrences of the same failure are one thing to fix, and one pull
+  // request. The branch is named after it, so a second run replaces the
+  // branch instead of opening a second pull request.
+  const errorClass = String(analysis.error_class || '').trim();
+  const signature = playbook.signature
+    ? String(playbook.signature)
+    : `${errorClass || 'error'}@${analysis.file || path || 'unknown'}`;
+
+  // The probe is what the error looks like in the feed of errors that are
+  // still firing — the text to look for. A known issue has a stable name; a
+  // raw error does not, so the message is used, and a message that carries
+  // ids in it is a message that needs a playbook entry.
+  const probe = (playbook.signature
+    ? String(playbook.signature)
+    : (report.split('\n')[0] || '').trim())
+    .slice(0, 120)
+    .replace(/<!--/g, '&lt;!--')
+    .replace(/-->/g, '--&gt;');
+
+  // The markers are read back by the policy sweep, which checks that the
+  // error stopped firing after the fix was merged.
   const body = ['## What broke', '', '~~~', report.trim().slice(0, 2000), '~~~', ''];
   if (playbook.signature) {
     body.push('## Known issue', '', `**Signature:** \`${playbook.signature}\``, '');
@@ -597,14 +619,18 @@ function apply() {
     'Produced by the `error-autofix` pipeline and reviewed by the',
     'canonical AI review (security audit + style review) — see the run',
     'of this workflow. A bot opened this; a human approves it.', '',
+    `<!-- error-signature: ${signature} -->`,
+    `<!-- error-probe: ${probe} -->`,
   );
 
-  const digest = createHash('sha1').update(report + path).digest('hex').slice(0, 8);
+  const digest = createHash('sha1').update(signature).digest('hex').slice(0, 8);
   emit('patch', patch.slice(0, 48000));
   emit('branch', `fix/auto-${digest}`);
   emit('title', title);
   emit('body', body.join('\n'));
   emit('pr_ready', prReady ? 'true' : 'false');
+  emit('signature', signature);
+  emit('probe', probe);
 }
 
 if (command === 'sources') await sources();

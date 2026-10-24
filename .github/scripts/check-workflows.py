@@ -25,7 +25,10 @@ Exits non-zero on the first failure with the file named.
 from __future__ import annotations
 
 import pathlib
+import re
+import subprocess
 import sys
+import tempfile
 
 import yaml
 
@@ -34,6 +37,11 @@ import yaml
 FORBIDDEN_IN_WITH = ("env.",)
 
 KNOWN_LOCAL_PREFIXES = "./", ".github/"
+
+# `${{ ... }}` is not bash: the runner replaces it before the shell sees it.
+# A syntax check has to do the same, or every expression reads as a broken
+# brace.
+EXPRESSION = re.compile(r"\$\{\{[^}]*\}\}")
 
 
 def check(path: pathlib.Path, spec: dict) -> list[str]:
@@ -82,7 +90,36 @@ def check(path: pathlib.Path, spec: dict) -> list[str]:
             if step.get("id") and not isinstance(step["id"], str):
                 problems.append(f"{where}: `id:` must be a string")
 
+            # 4. the `run:` block has to be a shell script the runner can
+            #    start. A syntax error in it is not caught by anything else
+            #    here, and it fails the job it is in — for a scheduled job,
+            #    once a day, quietly.
+            run = step.get("run")
+            if isinstance(run, str):
+                problem = shell_problem(EXPRESSION.sub("EXPR", run))
+                if problem:
+                    problems.append(f"{where}: the `run:` block is not valid bash — {problem}")
+
     return problems
+
+
+def shell_problem(script: str) -> str:
+    """The shell's own complaint about a script, or an empty string."""
+    with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as handle:
+        handle.write(script)
+        path = handle.name
+    try:
+        # LC_ALL=C: the shell's complaints are part of the output, and a
+        # message in the runner's language is a message nobody can search for.
+        done = subprocess.run(
+            ["bash", "-n", path], capture_output=True, text=True, env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"}
+        )
+        if done.returncode == 0:
+            return ""
+        message = done.stderr.strip().splitlines()[-1] if done.stderr.strip() else "syntax error"
+        return message.replace(path, "the script").replace("line ", "line ")
+    finally:
+        pathlib.Path(path).unlink(missing_ok=True)
 
 
 def main() -> int:

@@ -439,5 +439,42 @@ function shaped(schema) {
   check('the failure says the position was not resolved', message.includes('source map'), message.slice(0, 200));
 }
 
+// 16. The signature is the error's class, not this occurrence of it: the
+//     same failure twice is one pull request, not two. The branch is named
+//     after it, so the second run replaces the first one.
+{
+  const first = run('apply', makeRepo(), { STAGE_OUTPUT: RESULT, ERROR_REPORT: REPORT });
+  const second = run('apply', makeRepo(), {
+    STAGE_OUTPUT: RESULT,
+    ERROR_REPORT: `${REPORT}\n    at later (src/users.ts:9:1)`,
+  });
+  check('the same error class gets the same branch', first.outputs.branch === second.outputs.branch,
+    `${first.outputs.branch} vs ${second.outputs.branch}`);
+  check('the signature is the class and the file', first.outputs.signature === 'TypeError@src/users.ts',
+    String(first.outputs.signature));
+  check('the body carries the signature marker', String(first.outputs.body || '').includes('<!-- error-signature: TypeError@src/users.ts -->'));
+  check('the body carries the probe', String(first.outputs.body || '').includes('<!-- error-probe: TypeError: Cannot read properties of null'));
+}
+
+// 17. Another class is another thing to fix, and another pull request.
+{
+  const result = JSON.parse(RESULT);
+  result.analysis.error_class = 'RangeError';
+  const { outputs } = run('apply', makeRepo(), { STAGE_OUTPUT: JSON.stringify(result), ERROR_REPORT: REPORT });
+  check('another class gets another signature', outputs.signature === 'RangeError@src/users.ts', String(outputs.signature));
+}
+
+// 18. A known issue is signed by its name, not by the file: the name is
+//     what the error looks like in the feed of errors still firing.
+{
+  const { outputs } = run('apply', makeRepo(), {
+    STAGE_OUTPUT: RESULT,
+    ERROR_REPORT: REPORT,
+    PLAYBOOK_JSON: JSON.stringify({ signature: 'Load failed', approach: 'Reload once.' }),
+  });
+  check('a known issue is signed by its name', outputs.signature === 'Load failed', String(outputs.signature));
+  check('the probe is the name too', outputs.probe === 'Load failed', String(outputs.probe));
+}
+
 console.log(failures ? `\n${failures} checks failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);
