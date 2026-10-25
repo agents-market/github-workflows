@@ -10,6 +10,7 @@
 # public_preview: Production error → root cause + a concrete fix + a reproducing test, as snippets the caller applies. Knows nothing about GitHub; the caller decides pull request or issue.
 #
 # Input contract:
+#   - provider (enum minimax/openrouter/openai/anthropic/replicate, default minimax)
 #   - error_report (string, required, 1..20000 chars) — the error as production
 #     produced it: message + stack trace, verbatim
 #   - source_files (object, required) — {path: contents}, the files the stack
