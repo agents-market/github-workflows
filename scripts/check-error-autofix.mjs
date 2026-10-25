@@ -620,7 +620,11 @@ const after = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : nu
 const kind = args[0];
 const action = args[1];
 if (kind === 'label' && action === 'create') { print('label created'); process.exit(0); }
-if (kind === 'repo' && action === 'view') { print({ defaultBranchRef: { defaultBranch: state.default_branch || 'main' } }); process.exit(0); }
+if (kind === 'repo' && action === 'view') {
+  // The real gh does not know --repo here: the repository is an argument.
+  if (args.includes('--repo')) { process.stderr.write('unknown flag: --repo\\n'); process.exit(1); }
+  print({ defaultBranchRef: { name: state.default_branch || 'main' } }); process.exit(0);
+}
 if (kind === 'pr' && action === 'list') {
   const head = after('--head');
   if (head) print((state.prs_by_head || {})[head] || []);
@@ -681,7 +685,18 @@ const PUBLISH_ENV = {
   check('the pull request is labelled as the bot\'s', calls.some((c) => c[0] === 'pr' && c[1] === 'create' && c.includes('auto-fix')));
 }
 
-// 22. The same error class does not open a second pull request: the branch is
+// 22. The pull request goes to the repository's default branch. The name of
+//     the branch is not "main" in every repository, and a pull request aimed
+//     at a branch that is not there is a pull request that cannot be opened.
+{
+  const gh = fakeGh({ default_branch: 'trunk' });
+  tryRun('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  const created = gh.calls().find((c) => c[0] === 'pr' && c[1] === 'create');
+  check('the pull request goes to the default branch', Boolean(created) && created.includes('trunk'),
+    created ? created.join(' ') : 'no pull request was created');
+}
+
+// 23. The same error class does not open a second pull request: the branch is
 //     named after the error, so the open one is updated instead.
 {
   const gh = fakeGh({ prs_by_head: { 'fix/auto-12345678': [{ number: 7 }] } });
@@ -692,7 +707,7 @@ const PUBLISH_ENV = {
   check('the open pull request is told the error fired again', calls.some((c) => c[0] === 'pr' && c[1] === 'comment' && c.includes('7')));
 }
 
-// 23. The ceiling. A queue of fixes nobody merges is worth less than a queue
+// 24. The ceiling. A queue of fixes nobody merges is worth less than a queue
 //     of issues somebody reads.
 {
   const gh = fakeGh({ open_prs: [{ number: 1 }, { number: 2 }, { number: 3 }] });
@@ -703,7 +718,7 @@ const PUBLISH_ENV = {
   check('the issue is labelled for a human', calls.some((c) => c[0] === 'issue' && c[1] === 'create' && c.includes('needs-review')));
 }
 
-// 24. A pull request the repository will not let us open. The fix is on the
+// 25. A pull request the repository will not let us open. The fix is on the
 //     branch either way, and a fix that is only on a branch is a fix that is
 //     lost.
 {
@@ -715,7 +730,29 @@ const PUBLISH_ENV = {
   check('the issue names the branch the fix is on', Boolean(issue) && issue.join(' ').includes('fix/auto-12345678'));
 }
 
-// 25. The same error class does not open a second issue either.
+// 26. The two paths inside `publish` that file an issue file one issue per
+//     error class too. An error that fires every hour is one issue, not one
+//     per hour — and in a repository that does not let Actions open pull
+//     requests, the fallback is the path every run takes.
+{
+  const tracked = { open_issues: [{ number: 5, body: '<!-- error-signature: TypeError@src/users.ts -->' }] };
+
+  const fallback = fakeGh({ ...tracked, pr_create_fails: true });
+  const fallbackRun = tryRun('publish', makeRepo(), { ...fallback.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  check('the fallback does not open a second issue for the same error class',
+    fallbackRun.outputs.outcome === 'duplicate', String(fallbackRun.outputs.outcome));
+  check('the fallback comments on the issue that is already open',
+    fallback.calls().some((c) => c[0] === 'issue' && c[1] === 'comment' && c.includes('5')));
+  check('the fallback creates no second issue',
+    !fallback.calls().some((c) => c[0] === 'issue' && c[1] === 'create'));
+
+  const ceiling = fakeGh({ ...tracked, open_prs: [{ number: 1 }, { number: 2 }, { number: 3 }] });
+  tryRun('publish', makeRepo(), { ...ceiling.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
+  check('the ceiling does not open a second issue for the same error class',
+    !ceiling.calls().some((c) => c[0] === 'issue' && c[1] === 'create'));
+}
+
+// 27. The same error class does not open a second issue either.
 {
   const gh = fakeGh({ open_issues: [{ number: 5, body: '<!-- error-signature: TypeError@src/users.ts -->' }] });
   const { outputs } = tryRun('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
@@ -725,7 +762,7 @@ const PUBLISH_ENV = {
   check('the open issue is told the error fired again', calls.some((c) => c[0] === 'issue' && c[1] === 'comment' && c.includes('5')));
 }
 
-// 26. An error nobody has an issue for opens one.
+// 28. An error nobody has an issue for opens one.
 {
   const gh = fakeGh({ open_issues: [] });
   const { outputs } = tryRun('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
@@ -734,7 +771,7 @@ const PUBLISH_ENV = {
   check('the issue is labelled for a human', calls.some((c) => c[0] === 'issue' && c[1] === 'create' && c.includes('needs-review')));
 }
 
-// 27. The daily sweep: the merged fix did not stop the error.
+// 29. The daily sweep: the merged fix did not stop the error.
 {
   const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
   const server = createServer((req, res) => {
@@ -758,7 +795,7 @@ const PUBLISH_ENV = {
   }
 }
 
-// 28. The merged fix stopped the error: nothing to say.
+// 30. The merged fix stopped the error: nothing to say.
 {
   const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
   const server = createServer((req, res) => {
@@ -781,7 +818,7 @@ const PUBLISH_ENV = {
   }
 }
 
-// 29. A feed that does not answer. An empty feed would say every error
+// 31. A feed that does not answer. An empty feed would say every error
 //     stopped firing, and that is the one answer that must never be invented.
 {
   const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
@@ -796,7 +833,7 @@ const PUBLISH_ENV = {
   check('a feed that does not answer opens no issue', !gh.calls().some((c) => c[0] === 'issue' && c[1] === 'create'));
 }
 
-// 30. The contract: the workflow files call commands that exist. A command
+// 32. The contract: the workflow files call commands that exist. A command
 //     that does not exist is a job that fails for everybody who pastes the
 //     file, and the person who pasted it cannot tell the fault is ours.
 {

@@ -723,12 +723,47 @@ function ensureLabel(repo, name, color, description) {
 /** The branch the pull request goes to. */
 function baseBranch(repo) {
   if (process.env.BASE_BRANCH) return process.env.BASE_BRANCH;
-  const raw = gh(['repo', 'view', '--repo', repo, '--json', 'defaultBranchRef'], { allowFailure: true });
+  // `gh repo view` takes the repository as an argument. `--repo` is not a
+  // flag it knows, and the answer it gives is `defaultBranchRef.name` —
+  // both were wrong here, and the fallback to `main` hid both.
+  const raw = gh(['repo', 'view', repo, '--json', 'defaultBranchRef'], { allowFailure: true });
   try {
-    return JSON.parse(raw || '{}').defaultBranchRef?.defaultBranch || 'main';
+    return JSON.parse(raw || '{}').defaultBranchRef?.name || 'main';
   } catch {
     return 'main';
   }
+}
+
+/**
+ * The issue for an error class.
+ *
+ * One issue per error class: the same failure twice is one thing to look at.
+ * The signature is in the body as a marker, and an empty signature matches
+ * nothing — so it is not compared.
+ *
+ * Every path that files an issue goes through here, including the two paths
+ * inside `publish`: a fix that became an issue because the repository will
+ * not let a pull request be opened, and a fix that became an issue because
+ * the ceiling was reached. An error class that fires every hour is one
+ * issue, not one per hour.
+ */
+function openIssue(repo, title, body, signature) {
+  ensureLabel(repo, ISSUE_LABEL, 'FBCA04', 'An error that needs a human');
+
+  if (signature) {
+    const open = ghList(['issue', 'list', '--repo', repo, '--state', 'open', '--label', ISSUE_LABEL], 'number,body');
+    const tracked = open.find((issue) => String(issue.body || '').includes(`error-signature: ${signature}`));
+    if (tracked) {
+      console.log(`an open issue already carries this error class: #${tracked.number}`);
+      gh(['issue', 'comment', String(tracked.number), '--repo', repo, '--body', 'The same error fired again.'],
+        { allowFailure: true });
+      return 'duplicate';
+    }
+  }
+
+  gh(['issue', 'create', '--repo', repo, '--title', title, '--body', body, '--label', ISSUE_LABEL],
+    { allowFailure: true });
+  return 'issue';
 }
 
 /**
@@ -750,6 +785,7 @@ function publish() {
   const branch = process.env.BRANCH || '';
   const title = process.env.TITLE || '';
   let body = process.env.BODY || '';
+  const signature = process.env.SIGNATURE || '';
   const maxOpen = Number(process.env.MAX_OPEN_PRS || MAX_OPEN_PRS_DEFAULT);
   if (!repo || !branch) throw new Error('REPO and BRANCH are required to publish');
 
@@ -772,9 +808,7 @@ function publish() {
   const open = ghList(['pr', 'list', '--repo', repo, '--state', 'open', '--label', PR_LABEL], 'number');
   if (open.length >= maxOpen) {
     console.log(`::notice::${open.length} fixes are already open and the ceiling is ${maxOpen} — this one becomes an issue.`);
-    ensureLabel(repo, ISSUE_LABEL, 'FBCA04', 'An error that needs a human');
-    gh(['issue', 'create', '--repo', repo, '--title', title, '--body', body, '--label', ISSUE_LABEL],
-      { allowFailure: true });
+    openIssue(repo, title, body, signature);
     emit('outcome', 'over-ceiling');
     return;
   }
@@ -786,11 +820,8 @@ function publish() {
 
   if (created === null) {
     console.log('::warning::the pull request could not be opened — the fix is filed as an issue instead');
-    ensureLabel(repo, ISSUE_LABEL, 'FBCA04', 'An error that needs a human');
     const note = `${body}\n\nThe fix is on the branch \`${branch}\`. A pull request could not be opened: the repository does not let GitHub Actions create them.`;
-    gh(['issue', 'create', '--repo', repo, '--title', title, '--body', note, '--label', ISSUE_LABEL],
-      { allowFailure: true });
-    emit('outcome', 'issue');
+    emit('outcome', openIssue(repo, title, note, signature));
     return;
   }
   emit('outcome', 'pr');
@@ -798,10 +829,6 @@ function publish() {
 
 /**
  * `report` — the issue, for an error that has no mechanical fix.
- *
- * One issue per error class too: the same failure, twice, is one thing to
- * look at. The signature is in the body as a marker, and an empty signature
- * matches nothing — so it is not compared.
  */
 function report() {
   const repo = process.env.REPO || '';
@@ -810,23 +837,7 @@ function report() {
   const signature = process.env.SIGNATURE || '';
   if (!repo) throw new Error('REPO is required to report');
 
-  ensureLabel(repo, ISSUE_LABEL, 'FBCA04', 'An error that needs a human');
-
-  if (signature) {
-    const open = ghList(['issue', 'list', '--repo', repo, '--state', 'open', '--label', ISSUE_LABEL], 'number,body');
-    const duplicate = open.find((issue) => String(issue.body || '').includes(`error-signature: ${signature}`));
-    if (duplicate) {
-      console.log(`an open issue already carries this error class: #${duplicate.number}`);
-      gh(['issue', 'comment', String(duplicate.number), '--repo', repo, '--body', 'The same error fired again.'],
-        { allowFailure: true });
-      emit('outcome', 'duplicate');
-      return;
-    }
-  }
-
-  gh(['issue', 'create', '--repo', repo, '--title', title, '--body', body, '--label', ISSUE_LABEL],
-    { allowFailure: true });
-  emit('outcome', 'issue');
+  emit('outcome', openIssue(repo, title, body, signature));
 }
 
 /**

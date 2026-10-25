@@ -22,6 +22,9 @@
 name: AI Error Autofix Watch
 
 on:
+  # By hand as well: "is this error still firing?" is a question somebody
+  # asks, not only a cron job.
+  workflow_dispatch:
   schedule:
     - cron: '23 6 * * *'
 
