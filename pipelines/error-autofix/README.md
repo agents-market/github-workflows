@@ -12,7 +12,7 @@ author: agentsmarket-team
 price_usdc: 0
 call_price_usdc: 0
 tags: [autofix, debugging, vertical-wedge]
-public_preview: Production error → root cause + a concrete fix + a reproducing test, as snippets the caller applies. Knows nothing about GitHub; the caller decides pull request or issue.
+public_preview: Production error → root cause + a concrete fix + a reproducing test, as snippets the caller applies. The caller owns the pull request.
 ---
 
 # error-autofix
@@ -31,8 +31,7 @@ points at, and gives back:
 
 The caller owns everything else — the branch, the token, the pull request. That
 boundary is the point: the same pipeline serves a GitHub workflow, a GitLab
-pipeline, a cron job that opens an issue, or a person reading the output in a
-terminal.
+pipeline, a cron job, or a person reading the output in a terminal.
 
 ## When to use
 
@@ -41,8 +40,8 @@ terminal.
 - Nightly "what broke this week" triage, batched over a list of errors
 
 Not for a crash whose stack points into a dependency, and not for a bug with no
-stack at all — the pipeline is given the files the error points at, and without
-them it says so instead of guessing.
+stack at all — without the files the error points at, the pipeline says so
+instead of guessing.
 
 ## Configuration
 
@@ -56,15 +55,14 @@ them it says so instead of guessing.
 ## The playbook
 
 Not every error has a position. A failed dynamic import — `Load failed` in
-Safari, `Failed to fetch dynamically imported module` in Chrome — happens
-before there is a stack frame to point at, and there is nothing to resolve.
-The playbook is the answer: the consumer writes down the errors they already
-know about and the fix each of them gets, and the pipeline is told about the
-one that matched.
+Safari — happens before there is a stack frame to point at, and there is
+nothing to resolve. The playbook is the answer: the consumer writes down the
+errors they already know about and the fix each of them gets, and the pipeline
+is told about the one that matched.
 
-It is configuration, not code. The pipeline and the workflow are the same in
-every consumer's repository; the specifics of a consumer's errors live in the
-consumer's own file. The reference wiring reads it from
+It is configuration, not code: the pipeline and the workflow are the same in
+every consumer's repository, and the specifics of a consumer's errors live in
+the consumer's own file. The reference wiring reads it from
 `.error-playbook.json` in the repository root:
 
 ```json
@@ -73,7 +71,7 @@ consumer's own file. The reference wiring reads it from
     {
       "signature": "Load failed",
       "match": "contains",
-      "approach": "The lazy chunk is gone after a deploy: catch the failed import and reload once, guarded by a sessionStorage flag.",
+      "approach": "Catch the failed import and reload once.",
       "files_hint": ["src/pages/_app.tsx"],
       "needs_location": false
     }
@@ -90,9 +88,8 @@ consumer's own file. The reference wiring reads it from
 | `needs_location` | `false` when the error carries no position at all — the analysis then reports line `0` instead of inventing one |
 
 The first entry that matches wins, so the order in the file is the order of
-precedence. The reference wiring matches the signature itself, in code: a
-model deciding whether an error is a known issue is a model that decides
-differently twice.
+precedence. The reference wiring matches the signature itself, in code — a model
+deciding whether an error is a known issue decides differently twice.
 
 ## Output envelope
 
@@ -122,53 +119,33 @@ differently twice.
 ## The rule the caller has to enforce
 
 **`old_snippet` has to be in the file, byte for byte.** The caller replaces that
-exact text and refuses the fix when it is not there. That is the whole reason
-the pipeline returns snippets and not a diff: a diff written by a model does not
+exact text and refuses the fix when it is not there. That is the reason the
+pipeline returns snippets and not a diff: a diff written by a model does not
 apply, and a patch that does not apply is a pull request that cannot be
 reviewed.
 
-So the caller checks three things before it opens anything:
-
-1. `old_snippet` occurs exactly once in `file`;
-2. the resulting patch is not empty;
-3. a test was written.
-
+So the caller checks three things before it opens anything: `old_snippet` occurs
+exactly once in `file`, the resulting patch is not empty, and a test was written.
 One file changed, a non-empty patch, a test — then it is a pull request. Anything
 else is an issue with the analysis attached. The reference wiring is
 [`workflows/ai-error-autofix.yml`](../../workflows/ai-error-autofix.yml) in this
-repository, and the policy around that bot — one pull request per error class,
-a ceiling on open fixes, the daily check that a merged fix stopped the error —
-is in [`scripts/error-autofix.mjs`](../../scripts/error-autofix.mjs), with the
-checks that read it in
-[`scripts/check-error-autofix.mjs`](../../scripts/check-error-autofix.mjs).
+repository; the policy around that bot is in
+[`scripts/error-autofix.mjs`](../../scripts/error-autofix.mjs).
 
-Resolving a minified bundle to a source file is the caller's job too: it
-needs the source map, and the map is the consumer's. The pipeline is given
-the files, and the line to look at.
+Resolving a minified bundle to a source file is the caller's job too: it needs
+the source map, and the map is the consumer's. The pipeline is given the files,
+and the line to look at.
 
 ## Reading the stage output
 
-The action publishes each stage's output as `stage_<id>_output`, and it
-**escapes** what it writes: `%` becomes `%25` and a newline becomes `%0A`,
-because a workflow output is one line.
-
-This stage answers a JSON document, and a model writes JSON over several
-lines as often as over one. When it indents, the output arrives escaped —
-and a caller that parses it as it stands gets a value that cannot be
-parsed at all, and then says the stage returned nothing. It returned
-everything.
-
-So unescape it, in the inverse order of the escape:
-
-```js
-const unescape = (text) => text.replace(/%0A/g, '\n').replace(/%25/g, '%');
-```
-
-The newlines first, then the percent signs: a literal `%0A` in the text
-arrived as `%250A`, and it must not become a newline. The reference wiring
-([`scripts/error-autofix.mjs`](../../scripts/error-autofix.mjs)) does this,
-and falls back to the record of the whole run (`result_json`) when the
-per-stage output cannot be read.
+The action escapes what it writes to the outputs file — `%` becomes `%25`, a
+newline `%0A` — because a workflow output is one line. This stage answers
+JSON, and a model writes JSON over several lines as often as over one: when
+it indents, the output arrives escaped, and a caller that parses it as it
+stands gets nothing. Unescape it — the newlines first, then the percent
+signs: `text.replace(/%0A/g, '\n').replace(/%25/g, '%')`. The reference
+wiring does this, and falls back to `result_json` when the per-stage output
+cannot be read.
 
 ## Installation
 
@@ -177,14 +154,9 @@ agentsmarket pipeline install error-autofix
 # → creates .agentsmarket/pipelines/error-autofix@<version>/{pipeline.yaml, README.md, metadata.json}
 ```
 
-Without a version this installs the latest release. To pin one:
-
-```bash
-agentsmarket pipeline info error-autofix
-```
-
-`MINIMAX_API_KEY` in the environment. The stages are pinned to the MiniMax
-provider and model today.
+Without a version this installs the latest release; `agentsmarket pipeline info
+error-autofix` lists what is published. `MINIMAX_API_KEY` in the environment.
+The stages are pinned to the MiniMax provider and model today.
 
 ## Usage in GitHub Actions
 
@@ -198,13 +170,7 @@ provider and model today.
     MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:
     pipeline_file: .agentsmarket/pipelines/error-autofix@<version>/pipeline.yaml
-    inputs_json: |
-      {
-        "error_report": "TypeError: ...\n    at getName (src/api/users.ts:42:18)",
-        "source_files": { "src/api/users.ts": "export function getName(user) {...}" },
-        "repo_context": "Node 20, TypeScript, vitest for tests.",
-        "playbook": {}
-      }
+    inputs_json: '{"error_report": "TypeError: ...", "source_files": {"src/api/users.ts": "..."}, "repo_context": "Node 20", "playbook": {}}'
 ```
 
 ## What it will not do
@@ -212,9 +178,8 @@ provider and model today.
 - **It does not invent a file.** If the stack points at code that was not given
   to it, `fixable` is false and `explanation` says what is missing.
 - **It does not count.** There are no counts in the output — the caller counts.
-- **It does not open anything.** No token, no branch, no pull request. That is
-  the caller's job, and it is where the decision to open a pull request at all
-  belongs.
+- **It does not open anything.** No token, no branch, no pull request: the
+  decision to open a pull request at all belongs to the caller.
 
 ## Pricing
 
