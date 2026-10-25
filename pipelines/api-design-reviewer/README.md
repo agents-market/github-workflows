@@ -17,11 +17,13 @@ Reads an API spec, profiles its endpoints, and reviews the design for consistenc
 
 Three stages, each emitting `structured_json`:
 
-| Stage | Model | Output fields |
-|-------|-------|---------------|
-| `profile_api_design` | MiniMax-M2.7 | endpoints, stats |
-| `review_design` | MiniMax-M3 | findings, summary |
-| `aggregate_to_review` | MiniMax-M2.7 | summary, recommendations, markdown_report, findings |
+| Stage | Output fields |
+|-------|---------------|
+| `profile_api_design` | endpoints, stats |
+| `review_design` | findings, summary |
+
+Every stage runs on the `model` input — `MiniMax-M3` by default.
+| `aggregate_to_review` | summary, recommendations, markdown_report, findings |
 
 ## When to use
 
@@ -40,6 +42,12 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 | `api_style` | rest/graphql/trpc/auto | `auto` | API style to review against (default: auto — detect from spec shape). |
 | `strictness` | lenient/strict | `strict` | How aggressively to flag borderline issues (default: strict). Lenient drops low-severity nits. |
 | `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
+| `model` | string | `MiniMax-M3` | The LLM model for this run — must be one the chosen provider carries |
+
+The action runs what the caller passes — it does not read a spec's declared
+defaults — so pass both values in `inputs_json`, and give the action's own
+`provider:` and `model:` inputs the same two values. The action registers one
+provider, and a stage that asks for another one is refused.
 
 ## Output
 

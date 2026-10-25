@@ -58,6 +58,17 @@ env:
   # that passed the consumer smoke test. To pin it instead:
   #   gh api repos/agents-market/github-workflows/git/ref/tags/latest --jq .object.sha
   AI_AUTOFIX_REF: latest
+  # The provider and the model are inputs of the pipeline, and the action runs
+  # what the caller passes — it does not read a spec's declared defaults. These
+  # two values go into the pipeline inputs, and the action's own `provider:` and
+  # `model:` inputs below take them from the script's output, so the two
+  # cannot disagree: the action registers one provider, and a stage that asks
+  # for another one is refused. To run on another provider, change both values
+  # here and give the step below that provider's key — the model must be one
+  # the provider carries (minimax → MiniMax-M3, openrouter →
+  # minimax/minimax-m3).
+  PIPELINE_PROVIDER: minimax
+  PIPELINE_MODEL: MiniMax-M3
 
 jobs:
   fix:
@@ -137,8 +148,8 @@ jobs:
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:
-          provider: minimax
-          model: MiniMax-M3
+          provider: ${{ steps.sources.outputs.provider }}
+          model: ${{ steps.sources.outputs.model }}
           inputs_json: ${{ steps.sources.outputs.inputs_json }}
           pipeline_file: ${{ steps.install.outputs.path }}
 

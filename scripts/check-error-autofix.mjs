@@ -916,7 +916,52 @@ const PUBLISH_ENV = {
     const reading = (spec.stages ?? []).filter((s) => s.provider === '${input.provider}');
     check(`${slug} has every stage reading the provider input`, reading.length === (spec.stages ?? []).length,
       `${reading.length} of ${(spec.stages ?? []).length}`);
+    // The model travels with the provider: the provider's own list is what
+    // says which model exists, and a provider that does not carry the model
+    // refuses the run. A model that stays in the spec would make the provider
+    // input a promise the pipeline cannot keep.
+    const modelDecl = spec.inputs?.model;
+    check(`${slug} declares a model input`, Boolean(modelDecl));
+    check(`${slug} gives the model input a default`, modelDecl?.default === 'MiniMax-M3', String(modelDecl?.default));
+    const hardcodedModel = (spec.stages ?? []).filter((s) => s.model && !String(s.model).includes('${input.'));
+    check(`${slug} has no stage that names its model`, hardcodedModel.length === 0,
+      hardcodedModel.map((s) => `${s.id}: ${s.model}`).join(', '));
+    const readingModel = (spec.stages ?? []).filter((s) => s.model === '${input.model}');
+    check(`${slug} has every stage reading the model input`, readingModel.length === (spec.stages ?? []).length,
+      `${readingModel.length} of ${(spec.stages ?? []).length}`);
   }
+}
+
+// 35. The action does not read a spec's declared defaults — it runs what the
+//     caller passes. So a stage that reads `${input.provider}` needs the value
+//     in the pipeline inputs, and the action's own `provider:` input has to
+//     carry the same value: the action registers one provider, and a stage
+//     that asks for another one is refused. The reference workflows therefore
+//     pass both, and take them from one place, so the two cannot drift apart.
+{
+  const autofix = readFileSync(join(HERE, '..', 'workflows', 'ai-error-autofix.yml'), 'utf8');
+  const review = readFileSync(join(HERE, '..', '.github', 'workflows', 'ai-review.yml'), 'utf8');
+  const script = readFileSync(SCRIPT, 'utf8');
+  check('the autofix workflow passes the provider from the step output',
+    autofix.includes('provider: ${{ steps.sources.outputs.provider }}'));
+  check('the autofix workflow passes the model from the step output',
+    autofix.includes('model: ${{ steps.sources.outputs.model }}'));
+  check('the autofix workflow declares the provider it runs on',
+    /^ {2}PIPELINE_PROVIDER: \S+/m.test(autofix));
+  check('the autofix workflow declares the model it runs on',
+    /^ {2}PIPELINE_MODEL: \S+/m.test(autofix));
+  check('the script puts the provider into the pipeline inputs',
+    script.includes('provider: PROVIDER'));
+  check('the script puts the model into the pipeline inputs',
+    script.includes('model: MODEL'));
+  check('the review workflow passes the provider from the step output',
+    review.includes('provider: ${{ steps.diff.outputs.provider }}'));
+  check('the review workflow passes the model from the step output',
+    review.includes('model: ${{ steps.diff.outputs.model }}'));
+  check('the review workflow puts the provider into the pipeline inputs',
+    review.includes("'provider': os.environ['PROVIDER']"));
+  check('the review workflow puts the model into the pipeline inputs',
+    review.includes("'model': os.environ['MODEL']"));
 }
 
 console.log(failures ? `\n${failures} checks failed` : '\nall checks passed');

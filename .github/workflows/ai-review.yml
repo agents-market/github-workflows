@@ -196,6 +196,14 @@ jobs:
           # no pull request — the error-autofix workflow — has nothing to
           # collect from git, so it passes the diff it already has.
           PROVIDED: ${{ inputs.code_diff }}
+          # The provider and the model are inputs of the pipeline, and the
+          # action runs what the caller passes — it does not read a spec's
+          # declared defaults. They go into the pipeline inputs, and the
+          # action's own `provider:`/`model:` inputs take them from this
+          # step's output, so the two cannot disagree: the action registers
+          # one provider, and a stage that asks for another one is refused.
+          PROVIDER: minimax
+          MODEL: MiniMax-M3
         run: |
           set -euo pipefail
           if [ -n "$PROVIDED" ]; then
@@ -212,8 +220,12 @@ jobs:
           d = open('/tmp/d.txt', encoding='utf-8', errors='replace').read()
           p = {'code_diff': d, 'language': 'generic',
                'focus_area': os.environ['FOCUS'],
-               'severity_threshold': os.environ['SEVERITY']}
+               'severity_threshold': os.environ['SEVERITY'],
+               'provider': os.environ['PROVIDER'],
+               'model': os.environ['MODEL']}
           print('inputs_json=' + json.dumps(p))
+          print('provider=' + os.environ['PROVIDER'])
+          print('model=' + os.environ['MODEL'])
           " >> "$GITHUB_OUTPUT"
 
       - name: Run pipeline
@@ -239,8 +251,8 @@ jobs:
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:
-          provider: minimax
-          model: MiniMax-M3
+          provider: ${{ steps.diff.outputs.provider }}
+          model: ${{ steps.diff.outputs.model }}
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
           pipeline_file: ${{ steps.install.outputs.path }}
 
@@ -262,8 +274,8 @@ jobs:
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:
-          provider: minimax
-          model: MiniMax-M3
+          provider: ${{ steps.diff.outputs.provider }}
+          model: ${{ steps.diff.outputs.model }}
           inputs_json: ${{ steps.diff.outputs.inputs_json }}
           pipeline_file: ${{ steps.install.outputs.path }}
 

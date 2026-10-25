@@ -24,6 +24,10 @@ inputs:
     type: string
     required: false
     default: minimax
+  model:
+    type: string
+    required: false
+    default: MiniMax-M3
   some_input:
     type: string
     required: true
@@ -31,7 +35,7 @@ inputs:
 stages:
   - id: stage-one
     provider: ${input.provider}
-    model: MiniMax-M3
+    model: ${input.model}
     system: "You are ..."
     prompt: |
       Process ${input.some_input}.
@@ -42,6 +46,7 @@ stages:
 **Important:**
 - Spec only — no `# metadata` comments at top. Metadata lives in `README.md` frontmatter.
 - The provider is an input, not a name in the spec: `provider: ${input.provider}`, with a declared default. A stage that names a provider outright wins over the Action's `provider` input, and the caller pays for a provider they did not choose.
+- The model travels with it: `model: ${input.model}`. The provider's own list says which model exists, so a model left in the spec would make the provider input a promise the pipeline cannot keep — on openrouter the model is `minimax/minimax-m3`, not `MiniMax-M3`.
 - LLM stage prompts MUST require `file` and `line` fields explicitly (integer line number, not range). Without these, the action drops findings as missing metadata. See [TASKS row 113](https://github.com/agents-market/main/blob/main/TASKS.md#row-113) for the bug class.
 
 ### 3. Write `README.md` (frontmatter + body)
@@ -74,6 +79,7 @@ Longer description here. What does it do? When should you use it?
 | Input | Type | Required | Description |
 |-------|------|----------|-------------|
 | `provider` | string | no | The LLM provider for this run. `minimax` by default. |
+| `model` | string | no | The LLM model for this run. `MiniMax-M3` by default, and it must be one the chosen provider carries. |
 | `some_input` | string | yes | ... |
 
 ## Outputs
@@ -85,8 +91,11 @@ See `findings_json` action output — array of `{severity, file, line, message, 
 \`\`\`yaml
 - uses: agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})
   with:
+    # The action runs what the caller passes; it does not read a spec's defaults.
+    provider: minimax
+    model: MiniMax-M3
     pipeline_file: ./pipelines/your-pipeline-slug/pipeline.yaml
-    inputs_json: '{"some_input": "value"}'
+    inputs_json: '{"provider": "minimax", "model": "MiniMax-M3", "some_input": "value"}'
 \`\`\`
 
 ## Configuration

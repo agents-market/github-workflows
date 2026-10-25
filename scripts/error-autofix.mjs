@@ -50,6 +50,16 @@ const MAX_OPEN_PRS_DEFAULT = 3;
 // How long the daily check looks back.
 const LOOKBACK_DAYS_DEFAULT = 7;
 
+// The provider and the model this run uses. Both are inputs of the pipeline,
+// and the action runs what the caller passes — it does not read a spec's
+// declared defaults. The workflow sets both, and the action's own
+// `provider:`/`model:` inputs take them from this script's output, so the
+// two cannot drift apart: the action registers one provider, and a stage that
+// asks for another one is refused. The model must be one the chosen provider
+// carries — MiniMax-M3 for minimax, minimax/minimax-m3 for openrouter.
+const PROVIDER = process.env.PIPELINE_PROVIDER || 'minimax';
+const MODEL = process.env.PIPELINE_MODEL || 'MiniMax-M3';
+
 const command = process.argv[2];
 const workspace = resolve(process.argv[3] || process.cwd());
 
@@ -519,7 +529,16 @@ async function sources() {
     files_hint: (match.files_hint || []).map(String),
     needs_location: match.needs_location !== false,
   } : {};
+  // The provider and the model are inputs of the pipeline, and the action runs
+  // what the caller passes — it does not read a spec's declared defaults. So
+  // the caller passes them, here, and the workflow hands the same two values
+  // to the action's own `provider:`/`model:` inputs: the action registers one
+  // provider, and a stage that asks for another one is refused.
+  emit('provider', PROVIDER);
+  emit('model', MODEL);
   emit('inputs_json', JSON.stringify({
+    provider: PROVIDER,
+    model: MODEL,
     error_report: report.slice(0, 20000),
     source_files: sourceFiles,
     repo_context: context.slice(0, 4000),

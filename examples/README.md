@@ -252,12 +252,15 @@ and each pipeline's own README describes its inputs and outputs.
 - `MINIMAX_API_KEY` for real runs. It is the model provider's key, not ours —
   requests go to the provider, not to a server we proxy. **Another provider is
   one input away**: every pipeline here takes a `provider` input (`minimax` by
-  default) and every stage reads it. Two things have to agree. The Action needs
-  v0.4.9 or newer — the older bundled runtime read that field literally and
-  refused to run ("Provider '${input.provider}' is not registered") — and the
-  Action's `provider` input has to name the same provider as the pipeline's
-  input, because the Action registers only its own primary provider. The model
-  stays the pipeline's own: a stage's model wins over the Action's `model`.
+  default) and a `model` input (`MiniMax-M3` by default), and every stage reads
+  both. Three things have to agree. The Action needs v0.4.9 or newer — the older
+  bundled runtime read the provider field literally and refused to run
+  ("Provider '${input.provider}' is not registered"). The Action does not read a
+  spec's declared defaults, so the caller passes both values in `inputs_json`,
+  and the Action's own `provider` and `model` inputs carry the same two values,
+  because the Action registers only its own primary provider. The model has to
+  be one the chosen provider carries: `MiniMax-M3` for minimax,
+  `minimax/minimax-m3` for openrouter.
 - Agent identity. `pipeline call` downloads from the marketplace, which is an
   authenticated request. Run `npx @agentsmarket/cli init` once to generate a
   keypair.

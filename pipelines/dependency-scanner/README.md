@@ -60,11 +60,13 @@ for the fix: six advisories in, six advisories out.
 
 Three stages, each emitting `structured_json`:
 
-| Stage | Model | Output fields |
-|-------|-------|---------------|
-| `parse_lockfile` | MiniMax-M2.7 | packages, stats |
-| `analyze_vulns` | MiniMax-M3 | packages, summary |
-| `aggregate_report` | MiniMax-M3 | summary, recommendations, markdown_report, packages |
+| Stage | Output fields |
+|-------|---------------|
+| `parse_lockfile` | packages, stats |
+| `analyze_vulns` | packages, summary |
+
+Every stage runs on the `model` input — `MiniMax-M3` by default.
+| `aggregate_report` | summary, recommendations, markdown_report, packages |
 
 ## When to use
 
@@ -83,6 +85,12 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 | `ecosystem` | npm/python/rust | `npm` | Package ecosystem (npm = package-lock.json / package.json, python = requirements.txt / Pipfile.lock, rust =… |
 | `severity_threshold` | low/medium/high/critical | `medium` | Minimum severity to include in findings array (filters out noise; default: medium). |
 | `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
+| `model` | string | `MiniMax-M3` | The LLM model for this run — must be one the chosen provider carries |
+
+The action runs what the caller passes — it does not read a spec's declared
+defaults — so pass both values in `inputs_json`, and give the action's own
+`provider:` and `model:` inputs the same two values. The action registers one
+provider, and a stage that asks for another one is refused.
 
 ## Output
 

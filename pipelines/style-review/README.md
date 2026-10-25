@@ -56,6 +56,7 @@ security and style in the same PR.
 | `focus_area` | enum | `all` | `naming` / `types` / `exports` / `magic_numbers` / `all` |
 | `severity_threshold` | enum | `low` | `low` / `medium` / `high` / `critical` — drop findings below this floor |
 | `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
+| `model` | string | `MiniMax-M3` | The LLM model for this run — must be one the chosen provider carries |
 
 ## Output envelope
 
@@ -144,13 +145,11 @@ agentsmarket pipeline info style-review
   env:
     MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:
+    # The action runs what the caller passes; it does not read a spec's defaults.
+    provider: minimax
+    model: MiniMax-M3
     pipeline_file: .agentsmarket/pipelines/style-review@<version>/pipeline.yaml
-    inputs: |
-      {
-        "code_diff": "${{ github.event.pull_request.diff }}",
-        "language": "typescript",
-        "severity_threshold": "medium"
-      }
+    inputs_json: '{"code_diff": "<the diff>", "language": "typescript", "severity_threshold": "medium", "provider": "minimax", "model": "MiniMax-M3"}'
 ```
 
 ## Sample output (real run on a probe diff)
