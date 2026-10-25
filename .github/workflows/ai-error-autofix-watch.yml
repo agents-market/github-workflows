@@ -25,6 +25,12 @@ on:
   # By hand as well: "is this error still firing?" is a question somebody
   # asks, not only a cron job.
   workflow_dispatch:
+    inputs:
+      feed_url:
+        description: 'Override the feed of what is still firing.'
+        required: false
+        type: string
+        default: ''
   schedule:
     - cron: '23 6 * * *'
 
@@ -60,7 +66,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          ERROR_FEED_URL: ${{ vars.ERROR_FEED_URL }}
+          ERROR_FEED_URL: ${{ inputs.feed_url || vars.ERROR_FEED_URL || 'https://raw.githubusercontent.com/agents-market/github-workflows/main/fixtures/still-firing.txt' }}
           VERIFY_LOOKBACK_DAYS: ${{ vars.VERIFY_LOOKBACK_DAYS || '7' }}
         run: |
           set -euo pipefail
