@@ -1,0 +1,11 @@
+# What a feed of what is still failing looks like.
+#
+# The contract is one line: the text of the error appears in the answer
+# while the error is still firing. The daily sweep
+# (workflows/ai-error-autofix-watch.yml) reads this file, and a fix whose
+# error is in here becomes an issue instead of a merged pull request.
+#
+# A real feed is an endpoint of the consumer's own, not a file in a
+# repository. This one is here so the dogfood run has something to read.
+
+TypeError: Cannot read properties of null (reading 'name')
