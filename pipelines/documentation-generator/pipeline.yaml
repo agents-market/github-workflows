@@ -14,6 +14,12 @@ cost:
   max_per_run_usdc: 1.00
   on_exceed: fail
 inputs:
+  provider:
+    type: string
+    required: false
+    default: minimax
+    enum: [minimax, openrouter, openai, anthropic, replicate]
+    description: "The LLM provider for this run (default: minimax). The model stays as declared, so a provider that does not carry it refuses the run."
   code_diff:
     type: string
     required: true
@@ -60,7 +66,7 @@ defaults:
 stages:
   - id: profile_code_structure
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -108,7 +114,7 @@ stages:
     fields: [units, stats]
   - id: generate_documentation
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -161,7 +167,7 @@ stages:
     output_format: structured_json
     fields: [findings, summary]
   - id: aggregate_to_markdown
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text

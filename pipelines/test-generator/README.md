@@ -40,6 +40,7 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 | `language` | typescript/javascript/python/rust/go | `typescript` | Primary language in the diff (drives framework detection and test syntax; default: typescript). |
 | `test_framework` | vitest/jest/pytest/auto | `auto` | Test framework to generate for (auto = detect from imports: vitest/jest for TS/JS, pytest for Python;… |
 | `coverage_target` | branches/lines/all | `all` | What the generator should prioritize covering (default: all). |
+| `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
 
 ## Output
 

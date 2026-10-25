@@ -26,6 +26,12 @@ author_id: agentsmarket-team
 license: MIT
 
 inputs:
+  provider:
+    type: string
+    required: false
+    default: minimax
+    enum: [minimax, openrouter, openai, anthropic, replicate]
+    description: "The LLM provider for this run (default: minimax). The model stays as declared, so a provider that does not carry it refuses the run."
   code_diff:
     type: string
     required: true
@@ -72,7 +78,7 @@ stages:
   # === Stage 1: Pattern scan — cheap pre-filter on obvious issue classes ===
   - id: pattern_scan
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -133,7 +139,7 @@ stages:
   # === Stage 2: LLM deep review — catches business-logic flaws the scanner misses ===
   - id: deep_review
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -479,7 +485,7 @@ stages:
   # them. The cost is one more model call; the gain is a third more findings.
   - id: gap_review
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       temperature: 0
@@ -836,7 +842,7 @@ stages:
 
   # === Stage 4: Aggregate, score, recommend — emits the final structured report ===
   - id: aggregate
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text

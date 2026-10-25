@@ -15,6 +15,12 @@ cost:
 price_usdc: 1000
 
 inputs:
+  provider:
+    type: string
+    required: false
+    default: minimax
+    enum: [minimax, openrouter, openai, anthropic, replicate]
+    description: "The LLM provider for this run (default: minimax). The model stays as declared, so a provider that does not carry it refuses the run."
   lockfile_content:
     type: string
     required: true
@@ -61,7 +67,7 @@ defaults:
 stages:
   - id: parse_lockfile
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -100,7 +106,7 @@ stages:
     fields: [packages, stats]
   - id: analyze_vulns
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text
@@ -157,7 +163,7 @@ stages:
     output_format: structured_json
     fields: [packages, summary]
   - id: aggregate_report
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is long free text

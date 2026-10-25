@@ -39,6 +39,7 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 | `api_spec` | string | **required** | OpenAPI YAML/JSON spec, route-defining code, or GraphQL SDL text (1..50000 chars). |
 | `api_style` | rest/graphql/trpc/auto | `auto` | API style to review against (default: auto — detect from spec shape). |
 | `strictness` | lenient/strict | `strict` | How aggressively to flag borderline issues (default: strict). Lenient drops low-severity nits. |
+| `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
 
 ## Output
 

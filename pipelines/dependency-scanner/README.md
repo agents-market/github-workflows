@@ -82,6 +82,7 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 | `lockfile_content` | string | **required** | Contents of lockfile (package.json / requirements.txt / Cargo.toml). 1..50000 chars. Standard format expected. |
 | `ecosystem` | npm/python/rust | `npm` | Package ecosystem (npm = package-lock.json / package.json, python = requirements.txt / Pipfile.lock, rust =… |
 | `severity_threshold` | low/medium/high/critical | `medium` | Minimum severity to include in findings array (filters out noise; default: medium). |
+| `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
 
 ## Output
 

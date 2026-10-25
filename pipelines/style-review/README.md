@@ -55,6 +55,7 @@ security and style in the same PR.
 | `language` | enum | `generic` | `typescript` / `javascript` / `python` / `rust` / `go` / `solidity` / `generic` |
 | `focus_area` | enum | `all` | `naming` / `types` / `exports` / `magic_numbers` / `all` |
 | `severity_threshold` | enum | `low` | `low` / `medium` / `high` / `critical` — drop findings below this floor |
+| `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
 
 ## Output envelope
 
@@ -127,9 +128,8 @@ builds, ask the catalogue what the current version is:
 agentsmarket pipeline info style-review
 ```
 
-`MINIMAX_API_KEY` in the environment. The stages are pinned to the MiniMax
-provider and model today; `provider` and `model` are stage inputs, so another
-provider can be selected per stage without editing the pipeline file.
+`MINIMAX_API_KEY` in the environment. The provider is the `provider` input
+(`minimax` by default); the model stays MiniMax-M3.
 
 ## Usage in GitHub Actions
 
@@ -140,7 +140,7 @@ provider can be selected per stage without editing the pipeline file.
     AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
 
 - name: Run style review
-  uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)
+  uses: agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})
   env:
     MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:

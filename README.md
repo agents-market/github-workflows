@@ -119,7 +119,7 @@ does not answer fails the sweep rather than reporting that every error
 stopped.
 
 For wiring a pipeline directly rather than through the review workflow, see
-`agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)`.
+`agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})`.
 
 ### `examples/` — sample integrations
 

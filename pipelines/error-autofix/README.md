@@ -30,8 +30,8 @@ points at, and gives back:
    after.
 
 The caller owns everything else — the branch, the token, the pull request. That
-boundary is the point: the same pipeline serves a GitHub workflow, a GitLab
-pipeline, a cron job, or a person reading the output in a terminal.
+boundary is the point: the same pipeline serves a GitHub workflow, a cron job,
+or a person reading the output in a terminal.
 
 ## When to use
 
@@ -51,6 +51,7 @@ instead of guessing.
 | `source_files` | object | **required** | `{path: contents}` — the files the stack points at |
 | `repo_context` | string (0..4000 chars) | `""` | What the service is, which framework, the conventions to follow |
 | `playbook` | object | `{}` | The consumer's own record of a known issue that this error matched |
+| `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` |
 
 ## The playbook
 
@@ -89,7 +90,7 @@ the consumer's own file. The reference wiring reads it from
 
 The first entry that matches wins, so the order in the file is the order of
 precedence. The reference wiring matches the signature itself, in code — a model
-deciding whether an error is a known issue decides differently twice.
+deciding this decides differently twice.
 
 ## Output envelope
 
@@ -133,8 +134,7 @@ repository; the policy around that bot is in
 [`scripts/error-autofix.mjs`](../../scripts/error-autofix.mjs).
 
 Resolving a minified bundle to a source file is the caller's job too: it needs
-the source map, and the map is the consumer's. The pipeline is given the files,
-and the line to look at.
+the source map, and the map is the consumer's.
 
 ## Reading the stage output
 
@@ -156,7 +156,8 @@ agentsmarket pipeline install error-autofix
 
 Without a version this installs the latest release; `agentsmarket pipeline info
 error-autofix` lists what is published. `MINIMAX_API_KEY` in the environment.
-The stages are pinned to the MiniMax provider and model today.
+The provider is the `provider` input (`minimax` by default); the model stays
+MiniMax-M3.
 
 ## Usage in GitHub Actions
 
@@ -165,7 +166,7 @@ The stages are pinned to the MiniMax provider and model today.
   run: agentsmarket pipeline install error-autofix@<version>
 
 - name: Run the autofix
-  uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4 (verified; newer may exist)
+  uses: agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})
   env:
     MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:

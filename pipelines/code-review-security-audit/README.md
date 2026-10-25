@@ -53,6 +53,7 @@ Pair it with `style-review` for a combined security + style check.
 | `language` | enum | `generic` | `typescript` / `javascript` / `python` / `rust` / `go` / `solidity` / `generic` |
 | `focus_area` | enum | `security` | `security` / `performance` / `style` / `all` |
 | `severity_threshold` | enum | `medium` | `low` / `medium` / `high` / `critical` — drop findings below this floor |
+| `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
 
 `medium` is the default and the floor to keep: on this repository's fixture it
 found every planted weakness and invented nothing. The floor is a hint to the
@@ -145,10 +146,8 @@ agentsmarket pipeline install code-review-security-audit
 ```
 
 Without a version this installs the latest release; `pipeline info` names the
-current one. Needs
-`MINIMAX_API_KEY` in the environment. The stages are pinned to the MiniMax
-provider and model today; `provider` and `model` are stage inputs, so another
-provider can be selected per stage without editing the pipeline file.
+current one. Needs `MINIMAX_API_KEY` in the environment. The provider is the
+`provider` input (`minimax` by default); the model stays MiniMax-M3.
 
 ## Usage in GitHub Actions
 
@@ -157,7 +156,7 @@ provider can be selected per stage without editing the pipeline file.
   run: agentsmarket pipeline install code-review-security-audit@<version>
 
 - name: Run security audit
-  uses: agents-market/pipeline-action@6bd47c46ae97d1f9e2beaea3738849b33db65adf # v0.4.4
+  uses: agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})
   env:
     MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:

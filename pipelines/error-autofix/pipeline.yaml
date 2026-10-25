@@ -32,6 +32,12 @@ author_id: agentsmarket-team
 license: MIT
 
 inputs:
+  provider:
+    type: string
+    required: false
+    default: minimax
+    enum: [minimax, openrouter, openai, anthropic, replicate]
+    description: "The LLM provider for this run (default: minimax). The model stays as declared, so a provider that does not carry it refuses the run."
   error_report:
     type: string
     required: true
@@ -70,7 +76,7 @@ defaults:
 stages:
   - id: analyze_error
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       # The model samples by default, and this stage's output is JSON that has
@@ -170,7 +176,7 @@ stages:
 
   - id: propose_fix
     output_retry: loop
-    provider: minimax
+    provider: ${input.provider}
     maxTokens: 16384
     model_params:
       temperature: 0
