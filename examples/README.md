@@ -153,6 +153,13 @@ The workflow fetches the script that resolves the stack and applies the fix
 from this repository, at the `latest` tag — the same promise the review
 workflow makes. To pin it, set `AI_AUTOFIX_REF` to a commit SHA.
 
+One thing to know if you write a consumer of your own: the pipeline action
+escapes what it writes to the outputs file, because a workflow output is one
+line. A `%` arrives as `%25` and a newline as `%0A`, so a stage that returns
+a JSON document over several lines arrives escaped, and a consumer that does
+not unescape it reads a value that cannot be parsed at all. The script here
+unescapes it, in the inverse order of the escape.
+
 ### The policy around it
 
 A bot that opens a pull request for every error is a bot that gets ignored.
@@ -177,6 +184,9 @@ the errors that are still happening. The contract is deliberately small — the
 text of the error has to appear in the answer while the error is still
 firing. A feed that does not answer fails the sweep loudly rather than
 reporting that every error stopped.
+[`fixtures/error-feed.txt`](../fixtures/error-feed.txt) is what such a feed
+looks like: a file in this repository, so the dogfood run has something to
+read, and an example for you to write your own against.
 
 `MAX_OPEN_PRS`, `ERROR_FEED_URL` and `VERIFY_LOOKBACK_DAYS` (how far back
 the sweep looks, seven days by default) are repository variables.
