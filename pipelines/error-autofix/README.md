@@ -136,11 +136,39 @@ So the caller checks three things before it opens anything:
 One file changed, a non-empty patch, a test — then it is a pull request. Anything
 else is an issue with the analysis attached. The reference wiring is
 [`workflows/ai-error-autofix.yml`](../../workflows/ai-error-autofix.yml) in this
-repository.
+repository, and the policy around that bot — one pull request per error class,
+a ceiling on open fixes, the daily check that a merged fix stopped the error —
+is in [`scripts/error-autofix.mjs`](../../scripts/error-autofix.mjs), with the
+checks that read it in
+[`scripts/check-error-autofix.mjs`](../../scripts/check-error-autofix.mjs).
 
 Resolving a minified bundle to a source file is the caller's job too: it
 needs the source map, and the map is the consumer's. The pipeline is given
 the files, and the line to look at.
+
+## Reading the stage output
+
+The action publishes each stage's output as `stage_<id>_output`, and it
+**escapes** what it writes: `%` becomes `%25` and a newline becomes `%0A`,
+because a workflow output is one line.
+
+This stage answers a JSON document, and a model writes JSON over several
+lines as often as over one. When it indents, the output arrives escaped —
+and a caller that parses it as it stands gets a value that cannot be
+parsed at all, and then says the stage returned nothing. It returned
+everything.
+
+So unescape it, in the inverse order of the escape:
+
+```js
+const unescape = (text) => text.replace(/%0A/g, '\n').replace(/%25/g, '%');
+```
+
+The newlines first, then the percent signs: a literal `%0A` in the text
+arrived as `%250A`, and it must not become a newline. The reference wiring
+([`scripts/error-autofix.mjs`](../../scripts/error-autofix.mjs)) does this,
+and falls back to the record of the whole run (`result_json`) when the
+per-stage output cannot be read.
 
 ## Installation
 
