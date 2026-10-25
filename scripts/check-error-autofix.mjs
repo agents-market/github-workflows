@@ -243,7 +243,25 @@ async function tryRunAsync(command, repo, env) {
   check('the branch is named after the error', /^fix\/auto-[0-9a-f]{8}$/.test(outputs.branch || ''));
 }
 
-// 4. A snippet that is not in the file is not applied.
+// 4. The stage output arrives escaped. The action writes what a workflow
+//     output can hold — one line — so a newline becomes %0A. The model
+//     writes its JSON over several lines as often as over one, and a
+//     consumer that does not unescape it reads a value that cannot be
+//     parsed: the run then says the pipeline named no file to change,
+//     about a pipeline that named a file perfectly well.
+{
+  const repo = makeRepo();
+  const pretty = JSON.stringify(JSON.parse(RESULT), null, 2);
+  const escaped = pretty.replace(/%/g, '%25').replace(/\r?\n/g, '%0A');
+  let parsesAsItStands = true;
+  try { JSON.parse(escaped); } catch { parsesAsItStands = false; }
+  check('the escaped stage output is not JSON as it stands', !parsesAsItStands);
+  const { outputs } = tryRun('apply', repo, { STAGE_OUTPUT: escaped, ERROR_REPORT: REPORT });
+  check('an escaped stage output is still a fix', outputs.pr_ready === 'true', `pr_ready=${outputs.pr_ready}`);
+  check('the patch carries the change', (outputs.patch || '').includes('user?.name'));
+}
+
+// 5. A snippet that is not in the file is not applied.
 {
   const repo = makeRepo();
   const result = JSON.parse(RESULT);
@@ -256,7 +274,7 @@ async function tryRunAsync(command, repo, env) {
   check('no test was written', !existsSync(join(repo, 'tests/users.test.ts')));
 }
 
-// 5. A snippet that is in the file twice is refused: which one is the fault
+// 6. A snippet that is in the file twice is refused: which one is the fault
 //    is not something the script can decide.
 {
   const repo = makeRepo();
@@ -267,7 +285,7 @@ async function tryRunAsync(command, repo, env) {
   check('the ambiguous file is untouched', readFileSync(join(repo, 'src/dup.ts'), 'utf8') === DUPLICATED);
 }
 
-// 6. A test that would overwrite a file is refused: a bot that deletes
+// 7. A test that would overwrite a file is refused: a bot that deletes
 //    somebody's test is worse than a bot that opens an issue.
 {
   const repo = makeRepo();
@@ -278,7 +296,7 @@ async function tryRunAsync(command, repo, env) {
   check('the existing test is untouched', readFileSync(join(repo, 'tests/existing.test.ts'), 'utf8') === 'test("kept", () => {});\n');
 }
 
-// 7. The contract: the spec and the script agree on the keys.
+// 8. The contract: the spec and the script agree on the keys.
 {
   const spec = YAML.parse(readFileSync(SPEC, 'utf8'));
   const script = readFileSync(SCRIPT, 'utf8');
@@ -296,7 +314,7 @@ async function tryRunAsync(command, repo, env) {
   }
 }
 
-// 8. The pipeline runs, and the envelope it produces is the one the script
+// 9. The pipeline runs, and the envelope it produces is the one the script
 //    reads. The mock answers with values shaped by the spec's own schema, so
 //    the run proves the schema is satisfiable — a schema no answer can meet
 //    is a pipeline that fails on every call.
@@ -380,7 +398,7 @@ function shaped(schema) {
   }
 }
 
-// 9. The playbook: the consumer's own record of a known issue. When one
+// 10. The playbook: the consumer's own record of a known issue. When one
 //    matches, it decides the files — that is how an error with no stack at
 //    all ("Load failed") gets fixed.
 {
@@ -401,7 +419,7 @@ function shaped(schema) {
   check('the playbook is reported back', String(outputs.playbook_json || '').includes('Load failed'));
 }
 
-// 10. A playbook that does not match leaves the pipeline alone.
+// 11. A playbook that does not match leaves the pipeline alone.
 {
   const repo = makeRepo();
   writeFileSync(join(repo, '.error-playbook.json'), JSON.stringify({
@@ -413,7 +431,7 @@ function shaped(schema) {
   check('the file the stack points at is still the one', Object.keys(payload.source_files).join() === 'src/users.ts');
 }
 
-// 11. No playbook at all is normal, not an error.
+// 12. No playbook at all is normal, not an error.
 {
   const repo = makeRepo();
   const { outputs } = run('sources', repo, { ERROR_REPORT: REPORT });
@@ -421,7 +439,7 @@ function shaped(schema) {
   check('a repository without a playbook still works', Object.keys(payload.playbook || {}).length === 0);
 }
 
-// 12. A playbook that does not parse stops the run: a fix built on the
+// 13. A playbook that does not parse stops the run: a fix built on the
 //     wrong playbook is worse than no fix.
 {
   const repo = makeRepo();
@@ -438,7 +456,7 @@ function shaped(schema) {
   check('the failure says what is wrong', message.includes('not valid JSON'), message.slice(0, 160));
 }
 
-// 13. The known issue reaches the pull request: the reviewer has to see
+// 14. The known issue reaches the pull request: the reviewer has to see
 //     that this error is one the consumer already wrote down.
 {
   const repo = makeRepo();
@@ -451,7 +469,7 @@ function shaped(schema) {
   check('the body carries the approach', String(outputs.body || '').includes('Reload once.'));
 }
 
-// 14. A minified bundle has no path to take: the position in it means
+// 15. A minified bundle has no path to take: the position in it means
 //     nothing without the source map. The frames are walked, the frame in
 //     the dependency is skipped, and the consumer's own code is found.
 {
@@ -465,7 +483,7 @@ function shaped(schema) {
   check('the resolution says where it came from', locations[0]?.via === 'source map');
 }
 
-// 15. No source map, no position. The run says that instead of guessing:
+// 16. No source map, no position. The run says that instead of guessing:
 //     a bundle without a map has no line in it.
 {
   const repo = makeRepo();
@@ -482,7 +500,7 @@ function shaped(schema) {
   check('the failure says the position was not resolved', message.includes('source map'), message.slice(0, 200));
 }
 
-// 16. The signature is the error's class, not this occurrence of it: the
+// 17. The signature is the error's class, not this occurrence of it: the
 //     same failure twice is one pull request, not two. The branch is named
 //     after it, so the second run replaces the first one.
 {
@@ -499,7 +517,7 @@ function shaped(schema) {
   check('the body carries the probe', String(first.outputs.body || '').includes('<!-- error-probe: TypeError: Cannot read properties of null'));
 }
 
-// 17. Another class is another thing to fix, and another pull request.
+// 18. Another class is another thing to fix, and another pull request.
 {
   const result = JSON.parse(RESULT);
   result.analysis.error_class = 'RangeError';
@@ -507,7 +525,7 @@ function shaped(schema) {
   check('another class gets another signature', outputs.signature === 'RangeError@src/users.ts', String(outputs.signature));
 }
 
-// 18. A known issue is signed by its name, not by the file: the name is
+// 19. A known issue is signed by its name, not by the file: the name is
 //     what the error looks like in the feed of errors still firing.
 {
   const { outputs } = run('apply', makeRepo(), {
@@ -519,7 +537,7 @@ function shaped(schema) {
   check('the probe is the name too', outputs.probe === 'Load failed', String(outputs.probe));
 }
 
-// 19. The map over a URL. The base is the directory the maps live in — a
+// 20. The map over a URL. The base is the directory the maps live in — a
 //     deployment that keeps them under a prefix puts that prefix in the
 //     base — and the maps are private, so the endpoint wants a token.
 {
@@ -556,7 +574,7 @@ function shaped(schema) {
   }
 }
 
-// 20. A map that needs a key the consumer did not give is a map that is
+// 21. A map that needs a key the consumer did not give is a map that is
 //     not there: the position is not resolved, and the run says so.
 {
   const repo = makeRepo();
@@ -674,7 +692,7 @@ const PUBLISH_ENV = {
   SIGNATURE: 'TypeError@src/users.ts',
 };
 
-// 21. A fix with no pull request yet opens one.
+// 22. A fix with no pull request yet opens one.
 {
   const gh = fakeGh({});
   const { outputs } = tryRun('publish', makeRepo(), { ...gh.env, ...PUBLISH_ENV, MAX_OPEN_PRS: '3' });
@@ -685,7 +703,7 @@ const PUBLISH_ENV = {
   check('the pull request is labelled as the bot\'s', calls.some((c) => c[0] === 'pr' && c[1] === 'create' && c.includes('auto-fix')));
 }
 
-// 22. The pull request goes to the repository's default branch. The name of
+// 23. The pull request goes to the repository's default branch. The name of
 //     the branch is not "main" in every repository, and a pull request aimed
 //     at a branch that is not there is a pull request that cannot be opened.
 {
@@ -696,7 +714,7 @@ const PUBLISH_ENV = {
     created ? created.join(' ') : 'no pull request was created');
 }
 
-// 23. The same error class does not open a second pull request: the branch is
+// 24. The same error class does not open a second pull request: the branch is
 //     named after the error, so the open one is updated instead.
 {
   const gh = fakeGh({ prs_by_head: { 'fix/auto-12345678': [{ number: 7 }] } });
@@ -707,7 +725,7 @@ const PUBLISH_ENV = {
   check('the open pull request is told the error fired again', calls.some((c) => c[0] === 'pr' && c[1] === 'comment' && c.includes('7')));
 }
 
-// 24. The ceiling. A queue of fixes nobody merges is worth less than a queue
+// 25. The ceiling. A queue of fixes nobody merges is worth less than a queue
 //     of issues somebody reads.
 {
   const gh = fakeGh({ open_prs: [{ number: 1 }, { number: 2 }, { number: 3 }] });
@@ -718,7 +736,7 @@ const PUBLISH_ENV = {
   check('the issue is labelled for a human', calls.some((c) => c[0] === 'issue' && c[1] === 'create' && c.includes('needs-review')));
 }
 
-// 25. A pull request the repository will not let us open. The fix is on the
+// 26. A pull request the repository will not let us open. The fix is on the
 //     branch either way, and a fix that is only on a branch is a fix that is
 //     lost.
 {
@@ -730,7 +748,7 @@ const PUBLISH_ENV = {
   check('the issue names the branch the fix is on', Boolean(issue) && issue.join(' ').includes('fix/auto-12345678'));
 }
 
-// 26. The two paths inside `publish` that file an issue file one issue per
+// 27. The two paths inside `publish` that file an issue file one issue per
 //     error class too. An error that fires every hour is one issue, not one
 //     per hour — and in a repository that does not let Actions open pull
 //     requests, the fallback is the path every run takes.
@@ -752,7 +770,7 @@ const PUBLISH_ENV = {
     !ceiling.calls().some((c) => c[0] === 'issue' && c[1] === 'create'));
 }
 
-// 27. The same error class does not open a second issue either.
+// 28. The same error class does not open a second issue either.
 {
   const gh = fakeGh({ open_issues: [{ number: 5, body: '<!-- error-signature: TypeError@src/users.ts -->' }] });
   const { outputs } = tryRun('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
@@ -762,7 +780,7 @@ const PUBLISH_ENV = {
   check('the open issue is told the error fired again', calls.some((c) => c[0] === 'issue' && c[1] === 'comment' && c.includes('5')));
 }
 
-// 28. An error nobody has an issue for opens one.
+// 29. An error nobody has an issue for opens one.
 {
   const gh = fakeGh({ open_issues: [] });
   const { outputs } = tryRun('report', makeRepo(), { ...gh.env, ...PUBLISH_ENV });
@@ -771,7 +789,7 @@ const PUBLISH_ENV = {
   check('the issue is labelled for a human', calls.some((c) => c[0] === 'issue' && c[1] === 'create' && c.includes('needs-review')));
 }
 
-// 29. The daily sweep: the merged fix did not stop the error.
+// 30. The daily sweep: the merged fix did not stop the error.
 {
   const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
   const server = createServer((req, res) => {
@@ -795,7 +813,7 @@ const PUBLISH_ENV = {
   }
 }
 
-// 30. The merged fix stopped the error: nothing to say.
+// 31. The merged fix stopped the error: nothing to say.
 {
   const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
   const server = createServer((req, res) => {
@@ -818,7 +836,7 @@ const PUBLISH_ENV = {
   }
 }
 
-// 31. A feed that does not answer. An empty feed would say every error
+// 32. A feed that does not answer. An empty feed would say every error
 //     stopped firing, and that is the one answer that must never be invented.
 {
   const gh = fakeGh({ merged_prs: [{ number: 3, body: PR_BODY }] });
@@ -833,7 +851,7 @@ const PUBLISH_ENV = {
   check('a feed that does not answer opens no issue', !gh.calls().some((c) => c[0] === 'issue' && c[1] === 'create'));
 }
 
-// 32. The contract: the workflow files call commands that exist. A command
+// 33. The contract: the workflow files call commands that exist. A command
 //     that does not exist is a job that fails for everybody who pastes the
 //     file, and the person who pasted it cannot tell the fault is ours.
 {

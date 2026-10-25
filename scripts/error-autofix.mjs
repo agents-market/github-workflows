@@ -436,15 +436,38 @@ async function resolveFiles(report, playbookMatch) {
 }
 
 /**
+ * The action escapes what it writes to the outputs file: `%` becomes `%25`
+ * and a newline becomes `%0A`, because a workflow output is one line.
+ *
+ * The inverse, in the same order as the escape: the newlines first, then
+ * the percent signs. A literal "%0A" in the text arrived as "%250A", and it
+ * must not become a newline.
+ */
+function unescapeAction(text) {
+  return String(text ?? '').replace(/%0A/g, '\n').replace(/%25/g, '%');
+}
+
+/**
  * The stage's output text.
  *
- * The action publishes it per stage (`stage_<id>_output`) and also the whole
- * run as a record of stage id → output text. The first is exact; the second
- * is the fallback, and its last entry is the last stage that ran.
+ * The model writes the JSON over several lines as often as over one, and
+ * the action escapes a newline — so the stage output arrives escaped, and a
+ * consumer that does not unescape it reads a value that cannot be parsed at
+ * all. It is not a corner case: it is what happens every time the model is
+ * in the mood to indent, and the run then says "the pipeline named no file
+ * to change" about a pipeline that named a file perfectly well.
+ *
+ * The record of the whole run (RESULT_JSON) is the fallback: one line
+ * already, and its last entry is the stage that proposed the fix.
  */
 function stageOutput() {
-  const direct = process.env.STAGE_OUTPUT || '';
-  if (direct.trim()) return direct;
+  const raw = process.env.STAGE_OUTPUT || '';
+  if (raw.trim()) {
+    // Plain JSON — a script run by hand — parses as it is. The action's
+    // escaped value does not, so it is unescaped and then read.
+    const direct = safeJson(raw, null) !== null ? raw : unescapeAction(raw);
+    if (safeJson(direct, null) !== null) return direct;
+  }
   const record = process.env.RESULT_JSON || '';
   if (!record.trim()) return '';
   try {
