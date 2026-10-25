@@ -64,9 +64,9 @@ Three stages, each emitting `structured_json`:
 |-------|---------------|
 | `parse_lockfile` | packages, stats |
 | `analyze_vulns` | packages, summary |
+| `aggregate_report` | summary, recommendations, markdown_report, packages |
 
 Every stage runs on the `model` input — `MiniMax-M3` by default.
-| `aggregate_report` | summary, recommendations, markdown_report, packages |
 
 ## When to use
 

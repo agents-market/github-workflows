@@ -21,9 +21,9 @@ Three stages, each emitting `structured_json`:
 |-------|---------------|
 | `profile_code_behavior` | functions, stats |
 | `generate_tests` | test_cases, summary |
+| `aggregate_to_test_file` | summary, recommendations, markdown_report, findings, generated_test_code |
 
 Every stage runs on the `model` input — `MiniMax-M3` by default.
-| `aggregate_to_test_file` | summary, recommendations, markdown_report, findings, generated_test_code |
 
 ## When to use
 

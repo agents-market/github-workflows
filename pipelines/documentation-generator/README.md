@@ -21,9 +21,9 @@ Three stages, each emitting `structured_json`:
 |-------|---------------|
 | `profile_code_structure` | units, stats |
 | `generate_documentation` | findings, summary |
+| `aggregate_to_markdown` | summary, recommendations, markdown_report, findings |
 
 Every stage runs on the `model` input — `MiniMax-M3` by default.
-| `aggregate_to_markdown` | summary, recommendations, markdown_report, findings |
 
 ## When to use
 

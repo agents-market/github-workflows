@@ -21,9 +21,9 @@ Three stages, each emitting `structured_json`:
 |-------|---------------|
 | `profile_api_design` | endpoints, stats |
 | `review_design` | findings, summary |
+| `aggregate_to_review` | summary, recommendations, markdown_report, findings |
 
 Every stage runs on the `model` input — `MiniMax-M3` by default.
-| `aggregate_to_review` | summary, recommendations, markdown_report, findings |
 
 ## When to use
 
