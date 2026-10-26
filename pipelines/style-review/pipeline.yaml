@@ -36,7 +36,7 @@ inputs:
     type: string
     required: false
     default: MiniMax-M3
-    description: "The LLM model for this run (default: MiniMax-M3). It must be a model the chosen provider carries: MiniMax-M3 for minimax, minimax/minimax-m3 for openrouter, gpt-4o for openai, claude-3-5-sonnet-20241022 for anthropic."
+    description: "The LLM model for this run (default: MiniMax-M3). It must be a model the chosen provider carries: MiniMax-M3 for minimax, gpt-4-turbo for openai, claude-3-sonnet-20240229 for anthropic, openai/gpt-4-turbo for openrouter."
   code_diff:
     type: string
     required: true

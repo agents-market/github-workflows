@@ -260,7 +260,7 @@ and each pipeline's own README describes its inputs and outputs.
   and the Action's own `provider` and `model` inputs carry the same two values,
   because the Action registers only its own primary provider. The model has to
   be one the chosen provider carries: `MiniMax-M3` for minimax,
-  `minimax/minimax-m3` for openrouter.
+  `gpt-4-turbo` for openai, `openai/gpt-4-turbo` for openrouter.
 - Agent identity. `pipeline call` downloads from the marketplace, which is an
   authenticated request. Run `npx @agentsmarket/cli init` once to generate a
   keypair.

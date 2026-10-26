@@ -46,7 +46,7 @@ stages:
 **Important:**
 - Spec only — no `# metadata` comments at top. Metadata lives in `README.md` frontmatter.
 - The provider is an input, not a name in the spec: `provider: ${input.provider}`, with a declared default. A stage that names a provider outright wins over the Action's `provider` input, and the caller pays for a provider they did not choose.
-- The model travels with it: `model: ${input.model}`. The provider's own list says which model exists, so a model left in the spec would make the provider input a promise the pipeline cannot keep — on openrouter the model is `minimax/minimax-m3`, not `MiniMax-M3`.
+- The model travels with it: `model: ${input.model}`. The provider's own list says which model exists, so a model left in the spec would make the provider input a promise the pipeline cannot keep — the id depends on the provider, `MiniMax-M3` on minimax and `openai/gpt-4-turbo` on openrouter.
 - LLM stage prompts MUST require `file` and `line` fields explicitly (integer line number, not range). Without these, the action drops findings as missing metadata. See [TASKS row 113](https://github.com/agents-market/main/blob/main/TASKS.md#row-113) for the bug class.
 
 ### 3. Write `README.md` (frontmatter + body)
