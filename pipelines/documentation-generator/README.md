@@ -1,6 +1,6 @@
 ---
 name: documentation-generator
-version: 2.0.12
+version: 2.0.13
 description: |
   Reads a diff, profiles the code it touches, and generates README, JSDoc, or architecture documentation for the changed surface.
 license: MIT

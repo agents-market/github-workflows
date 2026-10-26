@@ -1,5 +1,5 @@
 # name: style-review
-# version: 3.3.1
+# version: 3.3.2
 # description: AI-powered code style review for diffs. Identifies naming inconsistencies, missing types, unused exports, magic numbers, and codebase-pattern violations. Outputs structured findings with severity + line + category + fix suggestion + estimated impact. Free to download; a server call costs the tokens it uses.
 # price_usdc: 0
 # call_price_usdc: 0
@@ -20,7 +20,7 @@
 #   - focus_area (enum naming/types/exports/magic_numbers/all, default all)
 #   - severity_threshold (enum low/medium/high/critical, default low)
 name: style-review
-version: 3.3.1
+version: 3.3.2
 description: AI code style review of diffs — identifies naming inconsistencies, missing types, unused exports, magic numbers, and codebase-pattern violations. Structured findings with severity + category + fix + impact. Vertical wedge expansion path — code style review as paid AI agent service.
 author_id: agentsmarket-team
 license: MIT

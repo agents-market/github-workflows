@@ -1,6 +1,6 @@
 ---
 name: test-generator
-version: 2.0.12
+version: 2.0.13
 description: |
   Reads a diff, profiles the functions it changes, and generates test cases in the project’s own framework, targeting branches or lines.
 license: MIT
