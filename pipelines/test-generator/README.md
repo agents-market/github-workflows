@@ -17,11 +17,13 @@ Reads a diff, profiles the functions it changes, and generates test cases in the
 
 Three stages, each emitting `structured_json`:
 
-| Stage | Model | Output fields |
-|-------|-------|---------------|
-| `profile_code_behavior` | MiniMax-M2.7 | functions, stats |
-| `generate_tests` | MiniMax-M3 | test_cases, summary |
-| `aggregate_to_test_file` | MiniMax-M2.7 | summary, recommendations, markdown_report, findings, generated_test_code |
+| Stage | Output fields |
+|-------|---------------|
+| `profile_code_behavior` | functions, stats |
+| `generate_tests` | test_cases, summary |
+| `aggregate_to_test_file` | summary, recommendations, markdown_report, findings, generated_test_code |
+
+Every stage runs on the `model` input — `MiniMax-M3` by default.
 
 ## When to use
 
@@ -40,6 +42,13 @@ It is **advisory**. It reports; it does not gate anything. Pair it with
 | `language` | typescript/javascript/python/rust/go | `typescript` | Primary language in the diff (drives framework detection and test syntax; default: typescript). |
 | `test_framework` | vitest/jest/pytest/auto | `auto` | Test framework to generate for (auto = detect from imports: vitest/jest for TS/JS, pytest for Python;… |
 | `coverage_target` | branches/lines/all | `all` | What the generator should prioritize covering (default: all). |
+| `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
+| `model` | string | `MiniMax-M3` | The LLM model for this run — must be one the chosen provider carries |
+
+The action runs what the caller passes — it does not read a spec's declared
+defaults — so pass both values in `inputs_json`, and give the action's own
+`provider:` and `model:` inputs the same two values. The action registers one
+provider, and a stage that asks for another one is refused.
 
 ## Output
 

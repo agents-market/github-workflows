@@ -60,6 +60,27 @@ const SOURCE = `export function getName(user) {
 }
 `;
 
+/**
+ * The declared defaults of the spec's own inputs, merged into the caller's
+ * inputs — the way the CLI (`applyDefaults`) and the server (the merge in
+ * `invoke.ts`) both do it. The runtime does not: it resolves
+ * `${input.provider}` against the inputs it is handed, and an input that was
+ * never given stays its own text.
+ *
+ * The Action is the third path, and it is the one that does not merge: it
+ * hands `inputs_json` to the runtime as it is. A pipeline that reads its
+ * provider from an input therefore needs the Action to merge the defaults,
+ * and this file merges them so the test runs the way the CLI and the server
+ * run it.
+ */
+function withDefaults(spec, inputs) {
+  const out = { ...inputs };
+  for (const [key, decl] of Object.entries(spec.inputs ?? {})) {
+    if (!(key in out) && decl && typeof decl === 'object' && 'default' in decl) out[key] = decl.default;
+  }
+  return out;
+}
+
 const DUPLICATED = `export function twice(user) {
   const name = user.name;
   return name;
@@ -350,12 +371,12 @@ async function tryRunAsync(command, repo, env) {
   try {
     result = await runPipelineV2({
       spec,
-      inputs: {
+      inputs: withDefaults(spec, {
         error_report: REPORT,
         source_files: { 'src/users.ts': SOURCE },
         repo_context: 'Node 20',
         playbook: { signature: 'Load failed', approach: 'Reload once.', files_hint: ['src/users.ts'], needs_location: false },
-      },
+      }),
       deps,
     });
   } catch (e) {
@@ -872,6 +893,75 @@ const PUBLISH_ENV = {
     }
   }
   check('the workflows call the script at all', checked > 0, `${checked} calls`);
+}
+
+// 34. The provider is an input, not a name in the spec. A stage that names a
+//     provider outright wins over the Action's `provider` input, and the
+//     caller pays for a provider they did not choose. The input carries a
+//     default, so a caller that says nothing still gets one — the CLI and the
+//     server merge the declared defaults, and the Action has to as well.
+{
+  const dir = join(HERE, '..', 'pipelines');
+  for (const slug of readdirSync(dir)) {
+    const file = join(dir, slug, 'pipeline.yaml');
+    if (!existsSync(file)) continue;
+    const spec = YAML.parse(readFileSync(file, 'utf8'));
+    const decl = spec.inputs?.provider;
+    check(`${slug} declares a provider input`, Boolean(decl));
+    check(`${slug} gives the provider input a default`, decl?.default === 'minimax', String(decl?.default));
+    check(`${slug} lists the providers it accepts`, Array.isArray(decl?.enum) && decl.enum.includes('minimax'));
+    const hardcoded = (spec.stages ?? []).filter((s) => s.provider && !String(s.provider).includes('${input.'));
+    check(`${slug} has no stage that names its provider`, hardcoded.length === 0,
+      hardcoded.map((s) => `${s.id}: ${s.provider}`).join(', '));
+    const reading = (spec.stages ?? []).filter((s) => s.provider === '${input.provider}');
+    check(`${slug} has every stage reading the provider input`, reading.length === (spec.stages ?? []).length,
+      `${reading.length} of ${(spec.stages ?? []).length}`);
+    // The model travels with the provider: the provider's own list is what
+    // says which model exists, and a provider that does not carry the model
+    // refuses the run. A model that stays in the spec would make the provider
+    // input a promise the pipeline cannot keep.
+    const modelDecl = spec.inputs?.model;
+    check(`${slug} declares a model input`, Boolean(modelDecl));
+    check(`${slug} gives the model input a default`, modelDecl?.default === 'MiniMax-M3', String(modelDecl?.default));
+    const hardcodedModel = (spec.stages ?? []).filter((s) => s.model && !String(s.model).includes('${input.'));
+    check(`${slug} has no stage that names its model`, hardcodedModel.length === 0,
+      hardcodedModel.map((s) => `${s.id}: ${s.model}`).join(', '));
+    const readingModel = (spec.stages ?? []).filter((s) => s.model === '${input.model}');
+    check(`${slug} has every stage reading the model input`, readingModel.length === (spec.stages ?? []).length,
+      `${readingModel.length} of ${(spec.stages ?? []).length}`);
+  }
+}
+
+// 35. The action does not read a spec's declared defaults — it runs what the
+//     caller passes. So a stage that reads `${input.provider}` needs the value
+//     in the pipeline inputs, and the action's own `provider:` input has to
+//     carry the same value: the action registers one provider, and a stage
+//     that asks for another one is refused. The reference workflows therefore
+//     pass both, and take them from one place, so the two cannot drift apart.
+{
+  const autofix = readFileSync(join(HERE, '..', 'workflows', 'ai-error-autofix.yml'), 'utf8');
+  const review = readFileSync(join(HERE, '..', '.github', 'workflows', 'ai-review.yml'), 'utf8');
+  const script = readFileSync(SCRIPT, 'utf8');
+  check('the autofix workflow passes the provider from the step output',
+    autofix.includes('provider: ${{ steps.sources.outputs.provider }}'));
+  check('the autofix workflow passes the model from the step output',
+    autofix.includes('model: ${{ steps.sources.outputs.model }}'));
+  check('the autofix workflow declares the provider it runs on',
+    /^ {2}PIPELINE_PROVIDER: \S+/m.test(autofix));
+  check('the autofix workflow declares the model it runs on',
+    /^ {2}PIPELINE_MODEL: \S+/m.test(autofix));
+  check('the script puts the provider into the pipeline inputs',
+    script.includes('provider: PROVIDER'));
+  check('the script puts the model into the pipeline inputs',
+    script.includes('model: MODEL'));
+  check('the review workflow passes the provider from the step output',
+    review.includes('provider: ${{ steps.diff.outputs.provider }}'));
+  check('the review workflow passes the model from the step output',
+    review.includes('model: ${{ steps.diff.outputs.model }}'));
+  check('the review workflow puts the provider into the pipeline inputs',
+    review.includes("'provider': os.environ['PROVIDER']"));
+  check('the review workflow puts the model into the pipeline inputs',
+    review.includes("'model': os.environ['MODEL']"));
 }
 
 console.log(failures ? `\n${failures} checks failed` : '\nall checks passed');
