@@ -1,5 +1,5 @@
 # name: code-review-security-audit
-# version: 3.4.0
+# version: 3.4.1
 # description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate risk score, and prioritized remediation recommendations. Free to download; a server call costs the tokens it uses.
 # price_usdc: 0
 # call_price_usdc: 0
@@ -20,7 +20,7 @@
 # Input validation: provider (enum minimax/openrouter/openai/anthropic/replicate, default minimax); model (string, default MiniMax-M3); code_diff (string, required, 1..50000 chars); language (enum ts/js/py/rs/go/solidity/generic, default generic); focus_area (enum security|performance|style|all, default security); severity_threshold (enum low|medium|high|critical, default medium).
 # Output schema: deep_review.findings[{file,line,severity,description,fix_suggestion,cwe_id,confidence}], summary{overall_risk_score 0-10}, recommendations[str] (≤5, prioritized).
 name: code-review-security-audit
-version: 3.4.0
+version: 3.4.1
 description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate summary with risk score, and prioritized remediation recommendations.
 author_id: agentsmarket-team
 license: MIT
