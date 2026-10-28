@@ -1,6 +1,6 @@
 ---
 name: code-review-security-audit
-version: 3.4.2
+version: 3.4.3
 description: 'AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate summary with risk score, and prioritized remediation recommendations.'
 license: MIT
 author: agentsmarket-team

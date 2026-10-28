@@ -1,5 +1,5 @@
 # name: error-autofix
-# version: 1.1.4
+# version: 1.1.5
 # description: AI error autofixer — takes a production error (message + stack trace) and the source files it points at, and returns the root cause, a concrete fix (the exact old snippet and its replacement) and a test that reproduces the error. Knows nothing about GitHub: the caller applies the patch and opens the pull request. Free to download; a server call costs the tokens it uses.
 # price_usdc: 0
 # call_price_usdc: 0
@@ -28,7 +28,7 @@
 # pipeline returns, and refuses the fix when the old snippet is not in the file
 # byte for byte.
 name: error-autofix
-version: 1.1.4
+version: 1.1.5
 description: 'AI error autofixer — takes a production error and the source files it points at, returns the root cause, a concrete fix and a reproducing test. Knows nothing about GitHub: the caller applies the patch and opens the pull request.'
 author_id: agentsmarket-team
 license: MIT
