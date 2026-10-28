@@ -158,7 +158,7 @@ The provider is the `provider` input and the model is the `model` input —
   run: agentsmarket pipeline install error-autofix@<version>
 
 - name: Run the autofix
-  uses: agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})
+  uses: agents-market/pipeline-action@ca2c4905cfc36c33aa3e46af1288b55fc0189343 # v0.4.11 (merges the declared input defaults)
   env:
     MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:

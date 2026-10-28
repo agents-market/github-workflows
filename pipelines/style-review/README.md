@@ -141,7 +141,7 @@ agentsmarket pipeline info style-review
     AGENTSMARKET_PRIVATE_KEY: ${{ secrets.PUBLISH_KEY }}
 
 - name: Run style review
-  uses: agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})
+  uses: agents-market/pipeline-action@ca2c4905cfc36c33aa3e46af1288b55fc0189343 # v0.4.11 (merges the declared input defaults)
   env:
     MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:

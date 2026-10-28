@@ -69,7 +69,7 @@ Longer description here. What does it do? When should you use it?
 ## Usage
 
 \`\`\`yaml
-- uses: agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})
+- uses: agents-market/pipeline-action@ca2c4905cfc36c33aa3e46af1288b55fc0189343 # v0.4.11 (merges the declared input defaults)
   with:
     pipeline_file: ./pipelines/your-pipeline-slug/pipeline.yaml
 \`\`\`
@@ -89,7 +89,7 @@ See `findings_json` action output — array of `{severity, file, line, message, 
 ## Examples
 
 \`\`\`yaml
-- uses: agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})
+- uses: agents-market/pipeline-action@ca2c4905cfc36c33aa3e46af1288b55fc0189343 # v0.4.11 (merges the declared input defaults)
   with:
     # The action runs what the caller passes; it does not read a spec's defaults.
     provider: minimax
@@ -129,7 +129,7 @@ workflows/<your-workflow-name>.yml
 
 Must be:
 - ≤ 250 lines
-- Use only official marketplace actions (`agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})`)
+- Use only official marketplace actions (`agents-market/pipeline-action@ca2c4905cfc36c33aa3e46af1288b55fc0189343 # v0.4.11 (merges the declared input defaults)`)
 - No hardcoded secrets (use `secrets:` references)
 - Single-purpose (no kitchen-sink workflows)
 
@@ -138,7 +138,7 @@ Must be:
 Always pin to a **full commit SHA**, not a tag:
 
 ```yaml
-uses: agents-market/pipeline-action@434ff6c46d82e34d601233e00bd2c564c68baa08 # v0.4.9 (resolves ${input.provider})
+uses: agents-market/pipeline-action@ca2c4905cfc36c33aa3e46af1288b55fc0189343 # v0.4.11 (merges the declared input defaults)
 ```
 
 We hand you a SHA and dogfood on `main`, which looks inconsistent and is not.

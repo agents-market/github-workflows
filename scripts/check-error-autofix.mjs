@@ -964,5 +964,50 @@ const PUBLISH_ENV = {
     review.includes("'model': os.environ['MODEL']"));
 }
 
+// 36. The action has to be a version that merges the declared defaults.
+//     v0.4.11 is where `applyInputDefaults` landed: before it, a stage that
+//     reads `${input.provider}` gets the literal text back and the run dies
+//     with "Provider '${input.provider}' is not registered" — the 3.3.2
+//     rollback, which killed the review on every consumer and was reverted
+//     three hours after publication. A pin that is not a full SHA is a
+//     floating pin: it can move under a consumer's feet, and the repo's own
+//     rule says a full SHA.
+{
+  const root = join(HERE, '..');
+  const files = [
+    join(root, 'CONTRIBUTING.md'),
+    join(root, 'README.md'),
+    join(root, 'workflows', 'ai-error-autofix.yml'),
+    join(root, '.github', 'workflows', 'ai-review.yml'),
+    ...readdirSync(join(root, 'pipelines')).map((slug) => join(root, 'pipelines', slug, 'README.md')),
+  ];
+  const MIN = [0, 4, 11];
+  const pins = [];
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    const text = readFileSync(file, 'utf8');
+    const re = /agents-market\/pipeline-action@([^\s#]+)\s*(?:#\s*(v[\d.]+))?/g;
+    let m;
+    while ((m = re.exec(text))) {
+      pins.push({ file: file.slice(root.length + 1), ref: m[1], version: m[2] ?? null });
+    }
+  }
+  check('the repo pins the action somewhere', pins.length > 0, String(pins.length));
+  const floating = pins.filter((p) => !/^[0-9a-f]{40}$/.test(p.ref));
+  check('every action pin is a full commit SHA', floating.length === 0,
+    floating.map((p) => `${p.file}: ${p.ref}`).join(', '));
+  const tooOld = pins.filter((p) => {
+    if (!p.version) return true;
+    const parts = p.version.replace(/^v/, '').split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      const a = parts[i] ?? 0;
+      if (a !== MIN[i]) return a < MIN[i];
+    }
+    return false;
+  });
+  check('every action pin is a version that merges the declared defaults', tooOld.length === 0,
+    tooOld.map((p) => `${p.file}: ${p.ref}${p.version ? ` (${p.version})` : ''}`).join(', '));
+}
+
 console.log(failures ? `\n${failures} checks failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);
