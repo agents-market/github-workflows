@@ -1019,5 +1019,39 @@ const PUBLISH_ENV = {
     tooOld.map((p) => `${p.file}: ${p.ref}${p.version ? ` (${p.version})` : ''}`).join(', '));
 }
 
+// 37. A stage that declares `output_retry` must declare an `output_schema`.
+//     The runtime's retry loop lives inside the schema check — a stage
+//     without a schema returns from `executeStage` before the loop is
+//     reached, on every path (CLI, server, action). So `output_retry: loop`
+//     without a schema is a promise the runtime cannot keep: the model
+//     answered in the wrong shape, the stage died on the first attempt, and
+//     nobody was ever offered a correction. Five stages said exactly that.
+//
+//     The second half keeps the schema from drifting away from the fields:
+//     the schema has to require every field the stage declares, because the
+//     field list is what the format check asks the model for.
+{
+  const dir = join(HERE, '..', 'pipelines');
+  for (const slug of readdirSync(dir)) {
+    const file = join(dir, slug, 'pipeline.yaml');
+    if (!existsSync(file)) continue;
+    const spec = YAML.parse(readFileSync(file, 'utf8'));
+    const stages = spec.stages ?? [];
+
+    const dead = stages.filter((s) => s.output_retry && !s.output_schema);
+    check(`${slug} has no stage that declares a retry it cannot run`, dead.length === 0,
+      dead.map((s) => `${s.id} (output_retry: ${s.output_retry})`).join(', '));
+
+    const drifted = stages.filter((s) => {
+      if (!s.output_schema) return false;
+      const required = s.output_schema.required ?? [];
+      const properties = Object.keys(s.output_schema.properties ?? {});
+      return (s.fields ?? []).some((f) => !required.includes(f) || !properties.includes(f));
+    });
+    check(`${slug} has every schema requiring the fields its stage declares`, drifted.length === 0,
+      drifted.map((s) => `${s.id}: ${(s.fields ?? []).join(', ')}`).join('; '));
+  }
+}
+
 console.log(failures ? `\n${failures} checks failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

@@ -82,6 +82,19 @@ defaults:
 stages:
   # === Stage 1: Pattern scan — cheap pre-filter on obvious issue classes ===
   - id: pattern_scan
+    # The retry loop lives inside the schema check (runtime: a stage without
+    # an output_schema never enters it), so `output_retry` without a schema is
+    # a promise the runtime cannot keep. The schema checks the container only
+    # — an array of objects, or an object — and nothing inside it: the items
+    # differ per pipeline, and a schema that said more about them would turn a
+    # usable review into no review.
+    output_schema:
+      type: object
+      required: [candidates]
+      properties:
+        candidates:
+          type: array
+          items: { type: object }
     output_retry: loop
     provider: ${input.provider}
     maxTokens: 16384
@@ -143,6 +156,22 @@ stages:
 
   # === Stage 2: LLM deep review — catches business-logic flaws the scanner misses ===
   - id: deep_review
+    # The retry loop lives inside the schema check (runtime: a stage without
+    # an output_schema never enters it), so `output_retry` without a schema is
+    # a promise the runtime cannot keep. The schema checks the container only
+    # — an array of objects, or an object — and nothing inside it: the items
+    # differ per pipeline, and a schema that said more about them would turn a
+    # usable review into no review.
+    output_schema:
+      type: object
+      required: [findings, rejected]
+      properties:
+        findings:
+          type: array
+          items: { type: object }
+        rejected:
+          type: array
+          items: { type: object }
     output_retry: loop
     provider: ${input.provider}
     maxTokens: 16384
@@ -489,6 +518,19 @@ stages:
   # the three the first had missed (11/11 in the union) and repeated none of
   # them. The cost is one more model call; the gain is a third more findings.
   - id: gap_review
+    # The retry loop lives inside the schema check (runtime: a stage without
+    # an output_schema never enters it), so `output_retry` without a schema is
+    # a promise the runtime cannot keep. The schema checks the container only
+    # — an array of objects, or an object — and nothing inside it: the items
+    # differ per pipeline, and a schema that said more about them would turn a
+    # usable review into no review.
+    output_schema:
+      type: object
+      required: [findings]
+      properties:
+        findings:
+          type: array
+          items: { type: object }
     output_retry: loop
     provider: ${input.provider}
     maxTokens: 16384

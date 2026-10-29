@@ -70,6 +70,21 @@ defaults:
 
 stages:
   - id: profile_code_structure
+    # The retry loop lives inside the schema check (runtime: a stage without
+    # an output_schema never enters it), so `output_retry` without a schema is
+    # a promise the runtime cannot keep. The schema checks the container only
+    # — an array of objects, or an object — and nothing inside it: the items
+    # differ per pipeline, and a schema that said more about them would turn a
+    # usable review into no review.
+    output_schema:
+      type: object
+      required: [units, stats]
+      properties:
+        units:
+          type: array
+          items: { type: object }
+        stats:
+          type: object
     output_retry: loop
     provider: ${input.provider}
     maxTokens: 16384
@@ -118,6 +133,21 @@ stages:
     output_format: structured_json
     fields: [units, stats]
   - id: generate_documentation
+    # The retry loop lives inside the schema check (runtime: a stage without
+    # an output_schema never enters it), so `output_retry` without a schema is
+    # a promise the runtime cannot keep. The schema checks the container only
+    # — an array of objects, or an object — and nothing inside it: the items
+    # differ per pipeline, and a schema that said more about them would turn a
+    # usable review into no review.
+    output_schema:
+      type: object
+      required: [findings, summary]
+      properties:
+        findings:
+          type: array
+          items: { type: object }
+        summary:
+          type: object
     output_retry: loop
     provider: ${input.provider}
     maxTokens: 16384
