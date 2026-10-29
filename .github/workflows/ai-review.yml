@@ -247,7 +247,7 @@ jobs:
         # which is how the pin went three weeks stale. A SHA here is also not
         # maintainable by a bot: GITHUB_TOKEN cannot push a commit that touches
         # .github/workflows/. Consumers still get a SHA, in CONTRIBUTING.md.
-        uses: agents-market/pipeline-action@ca2c4905cfc36c33aa3e46af1288b55fc0189343 # v0.4.11
+        uses: agents-market/pipeline-action@0ab99cfca4566494f6d84d4e0b08fd11a3bf6c21 # v0.4.12
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:
@@ -270,7 +270,7 @@ jobs:
         # failed first attempt makes GitHub skip every later step that has not
         # opted out of the implicit `success()` — including this one.
         if: always() && steps.review.outcome == 'failure'
-        uses: agents-market/pipeline-action@ca2c4905cfc36c33aa3e46af1288b55fc0189343 # v0.4.11
+        uses: agents-market/pipeline-action@0ab99cfca4566494f6d84d4e0b08fd11a3bf6c21 # v0.4.12
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:

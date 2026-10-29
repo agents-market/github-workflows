@@ -153,7 +153,7 @@ current one. Needs `MINIMAX_API_KEY` in the environment. The provider is the
   run: agentsmarket pipeline install code-review-security-audit@<version>
 
 - name: Run security audit
-  uses: agents-market/pipeline-action@ca2c4905cfc36c33aa3e46af1288b55fc0189343 # v0.4.11 (merges the declared input defaults)
+  uses: agents-market/pipeline-action@0ab99cfca4566494f6d84d4e0b08fd11a3bf6c21 # v0.4.12 (merges input defaults; validates output locally)
   env:
     MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
   with:

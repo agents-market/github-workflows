@@ -61,7 +61,7 @@ env:
   # not send it. Every pipeline published with it came back as
   # `call_price_usdc: 0` — the catalogue said "the author charges nothing"
   # because the publisher had never heard of the field.
-  CLI_VERSION: '0.14.14'
+  CLI_VERSION: '0.14.30'
   # Job-level, because each `run:` is its own shell. Defining MARKER inside the
   # detect step meant the write-back step — which needs the same path — saw an
   # empty variable, `echo sha > ""` failed, and the step died before committing

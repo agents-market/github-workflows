@@ -964,14 +964,24 @@ const PUBLISH_ENV = {
     review.includes("'model': os.environ['MODEL']"));
 }
 
-// 36. The action has to be a version that merges the declared defaults.
-//     v0.4.11 is where `applyInputDefaults` landed: before it, a stage that
-//     reads `${input.provider}` gets the literal text back and the run dies
-//     with "Provider '${input.provider}' is not registered" — the 3.3.2
-//     rollback, which killed the review on every consumer and was reverted
-//     three hours after publication. A pin that is not a full SHA is a
-//     floating pin: it can move under a consumer's feet, and the repo's own
-//     rule says a full SHA.
+// 36. The action has to be a version that passes the stage to the runtime
+//     WHOLE. Two things broke before that, and both broke silently:
+//
+//     v0.4.10 — the action merged the defaults a spec declares. Before it, a
+//     stage that reads `${input.provider}` got the literal text back and the
+//     run died with "Provider '${input.provider}' is not registered" — the
+//     3.3.2 rollback, which killed the review on every consumer and was
+//     reverted three hours after publication.
+//
+//     v0.4.12 — the stage reached the runtime with `output_schema` among the
+//     fields it carried. Before it, the local path copied the stage by a
+//     whitelist of fourteen fields, `output_schema` was not one of them, and
+//     the local run validated NOTHING: a spec could be green locally and fail
+//     on the marketplace with OUTPUT_VALIDATION_FAILED. A pin older than
+//     v0.4.12 keeps that hole open for every consumer.
+//
+//     A pin that is not a full SHA is a floating pin: it can move under a
+//     consumer's feet, and the repo's own rule says a full SHA.
 {
   const root = join(HERE, '..');
   const files = [
@@ -981,7 +991,7 @@ const PUBLISH_ENV = {
     join(root, '.github', 'workflows', 'ai-review.yml'),
     ...readdirSync(join(root, 'pipelines')).map((slug) => join(root, 'pipelines', slug, 'README.md')),
   ];
-  const MIN = [0, 4, 11];
+  const MIN = [0, 4, 12];
   const pins = [];
   for (const file of files) {
     if (!existsSync(file)) continue;
@@ -1005,7 +1015,7 @@ const PUBLISH_ENV = {
     }
     return false;
   });
-  check('every action pin is a version that merges the declared defaults', tooOld.length === 0,
+  check('every action pin is a version that passes the stage to the runtime whole', tooOld.length === 0,
     tooOld.map((p) => `${p.file}: ${p.ref}${p.version ? ` (${p.version})` : ''}`).join(', '));
 }
 

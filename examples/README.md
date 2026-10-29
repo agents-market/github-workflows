@@ -253,12 +253,13 @@ and each pipeline's own README describes its inputs and outputs.
   requests go to the provider, not to a server we proxy. **Another provider is
   one input away**: every pipeline here takes a `provider` input (`minimax` by
   default) and a `model` input (`MiniMax-M3` by default), and every stage reads
-  both. Three things have to agree. The Action needs v0.4.9 or newer — the older
-  bundled runtime read the provider field literally and refused to run
-  ("Provider '${input.provider}' is not registered"). The Action does not read a
-  spec's declared defaults, so the caller passes both values in `inputs_json`,
-  and the Action's own `provider` and `model` inputs carry the same two values,
-  because the Action registers only its own primary provider. The model has to
+  both. Three things have to agree. The Action needs v0.4.12 or newer. v0.4.10 is
+  where it started merging the defaults a spec declares; before that the bundled
+  runtime read the provider field literally and refused to run ("Provider
+  '${input.provider}' is not registered"). The caller passes both values in
+  `inputs_json` anyway, and the Action's own `provider` and `model` inputs carry
+  the same two values, because the Action registers only its own primary
+  provider — that keeps the workflow independent of the Action's version. The model has to
   be one the chosen provider carries: `MiniMax-M3` for minimax,
   `gpt-4-turbo` for openai, `openai/gpt-4-turbo` for openrouter.
 - Agent identity. `pipeline call` downloads from the marketplace, which is an
