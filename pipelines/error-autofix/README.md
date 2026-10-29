@@ -1,6 +1,6 @@
 ---
 name: error-autofix
-version: 1.1.5
+version: 1.1.6
 description: 'AI error autofixer — takes a production error and the source files it points at, returns the root cause, a concrete fix and a reproducing test. Knows nothing about GitHub: the caller applies the patch and opens the pull request.'
 license: MIT
 author: agentsmarket-team
