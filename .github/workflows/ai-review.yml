@@ -7,6 +7,10 @@
 #    blocks its own merge.
 # 2. One sticky comment per pipeline, upserted by HTML marker.
 # 3. Inline threads are synced, not appended, so resolve work stays bounded.
+#    The sync itself is a reusable workflow a consumer can call, and its
+#    contract is in docs/thread-sync-contract.md — what the class of a
+#    finding is, what the class marker means, and what a finding that did not
+#    move does.
 # 4. Ephemeral agent identity, no AGENTSMARKET_PRIVATE_KEY. `init` mints a
 #    throwaway key before any network call; only MINIMAX_API_KEY is needed.
 # 5. Cost is labelled notional — local mode charges nothing, so bare, it reads
@@ -551,6 +555,34 @@ jobs:
               core.setFailed(`summary comment: ${e.message}`);
             }
 
+      # The decisions live in scripts/thread-sync.mjs, and the reusable
+      # workflow a consumer calls uses that same file — one implementation,
+      # not two. Two implementations side by side is how the fork
+      # web3eco/shared-actions ended up with two behaviours for the same
+      # step: the behaviour was never written down. See issue #38.
+      #
+      # The contract this implements is in docs/thread-sync-contract.md. It
+      # says what the class marker means, what the CANON map folds, and what
+      # a finding that did not move does. Read it before changing any of
+      # them: a consumer reads its own comments back, and a change that
+      # breaks the marker breaks the next run silently.
+      #
+      # The checkout above already fetched the repository, so the module is
+      # on disk; only the script is needed.
+      # The decisions live in scripts/thread-sync.mjs, and the reusable
+      # workflow a consumer calls uses that same file — one implementation,
+      # not two. Two implementations side by side is how the fork
+      # web3eco/shared-actions ended up with two behaviours for the same
+      # step: the behaviour was never written down. See issue #38.
+      #
+      # The contract this implements is in docs/thread-sync-contract.md. It
+      # says what the class marker means, what the CANON map folds, and what
+      # a finding that did not move does. Read it before changing any of
+      # them: a consumer reads its own comments back, and a change that
+      # breaks the marker breaks the next run silently.
+      #
+      # The checkout above already fetched the repository, so the module is
+      # on disk.
       - name: Sync inline review threads
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
@@ -561,234 +593,31 @@ jobs:
           CWE_REPORT: ${{ steps.cwe.outputs.report || '{}' }}
         with:
           script: |
-            // Own threads via a body marker, never by actor login: REST calls the
-            // Actions bot `github-actions[bot]`, GraphQL calls it `github-actions`, so a
-            // login test matches nothing and every finding is re-posted. The marker also
-            // keeps each matrix job off the other pipeline's threads.
-            const MARK = `<!-- am:${process.env.MARKER} -->`;
+            // The step is not here: it is in scripts/thread-sync.mjs, and the
+            // reusable workflow (.github/workflows/thread-sync.yml) uses that
+            // same file. What is here is the wiring.
+            //
+            // `import()`, not `require()`: the module is ESM and
+            // actions/github-script runs on node20, where `require()` of an
+            // ES module is not available on every runner image.
+            const path = require('node:path');
+            const SRC = path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'thread-sync.mjs');
+
+            let findings = [];
+            try { findings = JSON.parse(process.env.FINDINGS || '[]'); } catch {}
+            if (!Array.isArray(findings)) findings = [];
+            let cwe = {};
+            try { cwe = JSON.parse(process.env.CWE_REPORT || '{}'); } catch {}
+
             try {
-              let findings = [];
-              try { findings = JSON.parse(process.env.FINDINGS || '[]'); } catch {}
-              let cwe = {};
-              try { cwe = JSON.parse(process.env.CWE_REPORT || '{}'); } catch {}
-              const verified = cwe.verified || {};
-              const valid = findings.filter(f =>
-                f && typeof f.file === 'string' && f.file.length > 0
-                && Number.isFinite(f.line) && f.line > 0);
-
-              const q = await github.graphql(`
-                query($owner:String!,$repo:String!,$number:Int!){
-                  repository(owner:$owner,name:$repo){
-                    pullRequest(number:$number){
-                      reviewThreads(first:100){
-                        nodes{ id isResolved isOutdated path line
-                               comments(first:10){ totalCount nodes{ id databaseId body } } }
-                      } } } }`,
-                { owner: context.repo.owner, repo: context.repo.repo, number: context.issue.number });
-              if (!q || !q.repository) throw new Error('graphql returned no repository — nothing to sync');
-              const threads = q.repository.pullRequest.reviewThreads.nodes;
-              const ours = threads.filter(t => {
-                const first = t.comments.nodes[0];
-                return first && typeof first.body === 'string' && first.body.includes(MARK);
+              const { syncThreads } = await import(SRC);
+              const r = await syncThreads({
+                github, context, findings,
+                marker: process.env.MARKER,
+                verified: cwe.verified || {},
+                warn: (m) => core.warning(m),
               });
-              // Live comments of this pipeline, keyed by where they stand. One
-              // place can hold several comments — two weaknesses of one class
-              // in one file are two comments — so the key holds a list, and a
-              // comment of another class on a line never hides a finding.
-              const live = new Map();
-              for (const t of ours) {
-                if (t.isResolved || t.isOutdated) continue;
-                const k = `${t.path}:${t.line}`;
-                const list = live.get(k) || [];
-                list.push(t);
-                live.set(k, list);
-              }
-              const liveCount = () => {
-                let n = 0;
-                for (const list of live.values()) n += list.length;
-                return n;
-              };
-              const forget = (t) => {
-                const k = `${t.path}:${t.line}`;
-                const list = live.get(k) || [];
-                const i = list.findIndex(x => x.id === t.id);
-                if (i >= 0) list.splice(i, 1);
-                if (!list.length) live.delete(k);
-              };
-
-              const { data: files } = await github.rest.pulls.listFiles({
-                ...context.repo, pull_number: context.issue.number, per_page: 100,
-              });
-              const inDiff = new Set(files.map(f => f.filename));
-
-              let resolved = 0, replaced = 0;
-              // One comment per (file, class). The model's line for a weakness
-              // is not stable — the same weakness comes back on a neighbouring
-              // line, sometimes fourteen lines away — and the comment key is
-              // path:line, so every run added fresh comments and the fixture's
-              // pull request collected 52 of them for the 11 planted
-              // weaknesses. The class is the CWE id, or the category tag the
-              // style pipeline opens its description with ("[types] ...").
-              // Same class only: two different weaknesses of one class can
-              // share a file, and the surviving comment still names the class
-              // and the file.
-              // Two ids that name one weakness are one weakness. The
-              // catalogue carries both (CWE-330 and CWE-338 both describe a
-              // random number that is not random), so the model picks either
-              // from run to run: the run of 2026-10-22 called the same
-              // Math.random token CWE-330 and then CWE-338, and the comment
-              // for the first id never closed. The reader saw the weakness
-              // twice. The map is the shortcut — it covers the pairs the
-              // catalogue offers for one weakness, not every future id.
-              //
-              // The map is deliberately short. A pair belongs here when the two
-              // ids name the same defect: 321 (a hard-coded cryptographic key)
-              // and 798 (hard-coded credentials) are the same line of code.
-              // CWE-200 (information exposure) is left out — it is a wider
-              // class than 209 (an error message with a secret in it), and
-              // merging them would hide one of two different exposures in the
-              // same file. Two comments for one weakness is the smaller fault:
-              // a hidden finding is worse than a duplicate.
-              const CANON = { 'CWE-330': 'CWE-338', 'CWE-259': 'CWE-798',
-                'CWE-915': 'CWE-1321', 'CWE-321': 'CWE-798' };
-              const canon = (id) => {
-                const u = String(id || '').trim().toUpperCase();
-                return CANON[u] || u;
-              };
-              const classOfText = (text) => {
-                const c = /CWE-\d+/i.exec(String(text || ''));
-                if (c) return canon(c[0]);
-                const v = /CVE-\d{4}-\d+/i.exec(String(text || ''));
-                if (v) return v[0].toUpperCase();
-                // The category tag the style pipeline opens its description
-                // with. Anchored at the start: a bracket in the middle of a
-                // sentence is prose, not a class.
-                const b2 = /^\s*\[([a-z][a-z_]{1,24})\]/i.exec(String(text || ''));
-                return b2 ? b2[1].toUpperCase() : null;
-              };
-              // What the body carries wins: it is written by this step, so it is
-              // exact. The text is the fallback for threads posted before the
-              // class marker existed.
-              const classOfBody = (body) => {
-                const m = /<!--\s*am:class:([a-z0-9_-]+)\s*-->/i.exec(String(body || ''));
-                return m ? canon(m[1].toUpperCase()) : classOfText(body);
-              };
-              const resolveThread = async (t) => {
-                await github.graphql(
-                  `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }`,
-                  { id: t.id });
-                forget(t);
-                resolved++;
-              };
-              // The token may not be allowed to close a thread — the run of
-              // 2026-10-22 showed the default GITHUB_TOKEN refused to resolve
-              // with "Resource not accessible by integration", while a personal
-              // token closed the same threads. A thread that cannot be closed
-              // stays as it is, and the fresh comment for that class is not
-              // posted: a standing comment the reader can see beats two they
-              // cannot. But a comment that can go must go, or the review keeps
-              // claiming weaknesses that were fixed days ago.
-              const closeThread = async (t) => {
-                const first = t.comments.nodes[0];
-                let why = '';
-                // A thread with replies is a conversation: never delete it,
-                // only resolve it.
-                if (first && (t.comments.totalCount || 0) === 1) {
-                  try {
-                    // The REST call wants the numeric comment id, not the
-                    // GraphQL node id — the node id is a 404 here.
-                    await github.rest.pulls.deleteReviewComment({
-                      ...context.repo, comment_id: first.databaseId,
-                    });
-                    forget(t);
-                    replaced++;
-                    return true;
-                  } catch (e) { why = `delete: ${e.message}`; }
-                }
-                try { await resolveThread(t); return true; }
-                catch (e) {
-                  core.warning(`cannot close a duplicate at ${t.path}:${t.line} — ${e.message}${why ? `; ${why}` : ''}`);
-                  return false;
-                }
-              };
-              const byClass = new Map();
-              for (const t of ours) {
-                if (t.isResolved || t.isOutdated || !inDiff.has(t.path)) continue;
-                const cls = classOfBody(t.comments.nodes[0] && t.comments.nodes[0].body);
-                if (!cls) continue;
-                const key = `${t.path}::${cls}`;
-                const list = byClass.get(key) || [];
-                list.push(t);
-                byClass.set(key, list);
-              }
-
-              // A thread whose file left the diff or whose line moved on says
-              // nothing about the code any more.
-              for (const t of ours) {
-                if (!t.isResolved && (t.isOutdated || !inDiff.has(t.path))) {
-                  await closeThread(t);
-                }
-              }
-
-              const emoji = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
-              let posted = 0, skipped = 0;
-              const closedIds = new Set();
-              for (const f of valid) {
-                if (!inDiff.has(f.file)) { skipped++; continue; }
-                // Close what this class already carries on this file, then post
-                // the fresh one on the line the model gives this time. If
-                // closing is not allowed, the standing comment stays and no
-                // second one is added.
-                const cls = canon(f.cwe) || classOfText(f.message);
-                const dupes = cls ? (byClass.get(`${f.file}::${cls}`) || []) : [];
-                let closed = true;
-                for (const t of dupes) {
-                  if (closedIds.has(t.id)) continue;
-                  if (await closeThread(t)) closedIds.add(t.id);
-                  else closed = false;
-                }
-                const key = `${f.file}:${f.line}`;
-                const here = live.get(key) || [];
-                // A comment of another class on this line is a different
-                // weakness and must not hide this finding: the run of
-                // 2026-10-22 lost the SSRF finding because a comment of
-                // another class stood on the same line. A comment of this
-                // class was closed above; a comment with no class cannot be
-                // told apart from this finding, so it stays and nothing is
-                // added.
-                const hidden = cls
-                  ? here.some(t => classOfBody(t.comments.nodes[0] && t.comments.nodes[0].body) === cls)
-                  : here.length > 0;
-                if (hidden || (dupes.length && !closed)) { skipped++; continue; }
-                let b = `${MARK}\n${emoji[f.severity] || '⚪'} **${String(f.severity || 'unknown').toUpperCase()}**`;
-                if (f.cwe) {
-                  const id = String(f.cwe).trim().toUpperCase();
-                  const v = verified[id];
-                  b += ` \`${id}\``;
-                  // The id is only worth printing if it was checked against the
-                  // official catalogue; an unchecked code is worse than none.
-                  b += v ? ` — [${v.short || v.name}](${v.url})` : ' — not in the published catalogue';
-                }
-                // The class tag is how the next run recognises this comment as
-                // the same weakness; it is a hidden marker, not reader text.
-                if (cls) b += `\n<!-- am:class:${cls} -->`;
-                const msg = String(f.message || '').replace(/^\s*\[[a-z][a-z_]{1,24}\]\s*/i, '');
-                b += ` (conf ${Math.round((f.confidence || 0) * 100)}%): ${msg}`;
-                if (f.recommendation) b += `\n\n💡 ${f.recommendation}`;
-                try {
-                  await github.rest.pulls.createReviewComment({
-                    ...context.repo, pull_number: context.issue.number,
-                    commit_id: context.payload.pull_request.head.sha,
-                    path: f.file, line: f.line, side: 'RIGHT', body: b,
-                  });
-                  posted++;
-                  live.set(key, [...here, { id: `new-${posted}`, path: f.file,
-                    line: f.line, comments: { nodes: [{ body: b }] } }]);
-                } catch (e) {
-                  core.warning(`inline skip ${key}: ${e.message}`);
-                }
-              }
-              core.info(`threads(${process.env.MARKER}) — ${posted} posted, ${resolved} resolved, ${replaced} replaced, ${liveCount()} live, ${skipped} suppressed`);
+              core.info(`threads(${process.env.MARKER}) — ${r.posted} posted, ${r.resolved} resolved, ${r.replaced} replaced, ${r.skipped} suppressed`);
             } catch (e) {
               core.warning(`thread sync FAILED — inline threads not synced: ${e.message}`);
               await core.summary.addHeading('Inline thread sync failed', 3)
