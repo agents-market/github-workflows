@@ -106,6 +106,14 @@ jobs:
       - name: The style review says nothing about what a formatter owns
         run: node scripts/check-style-review.mjs
 
+      # A stage whose answer is not valid JSON used to end the run on the first
+      # attempt, and the two stages before it had already been paid for. The
+      # runtime can recover since 0.5.1; this check proves the published
+      # runtime has it, and that a stage which cannot be satisfied fails
+      # instead of returning an empty answer.
+      - name: A malformed answer is retried, and a hopeless one fails loudly
+        run: node scripts/check-output-retry.mjs
+
       # The autofix example fetches its script from this repository at a ref.
       # A ref that does not resolve fails every job of every repository that
       # pasted the file, and the person who pasted it cannot tell that the
