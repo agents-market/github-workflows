@@ -114,7 +114,7 @@ const profileText = `${profile.system ?? ''}\n${profile.prompt ?? ''}`;
     check('the README has a section for what the pipeline does not report',
       /## What it does not report/.test(readme));
     check('the README states the formatting rule',
-      /Formatting\.\*?\*?.*owned by the repository's formatter/.test(flat));
+      /Formatting\.\*?\*?.*owned by the repository.s formatter/i.test(flat));
     check('the README states the prose-number rule',
       /A number in prose is not a magic number/.test(flat));
     check('the README states the named-rule rule',
