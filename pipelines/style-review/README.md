@@ -36,6 +36,28 @@ Given a unified diff and a few configuration knobs, `style-review` runs a
    ≤5 prioritized recommendations, and a markdown report suitable for a PR
    comment.
 
+## What it does not report
+
+Three kinds of remark are not findings, and the pipeline drops them:
+
+1. **Formatting.** Quote style, indentation, trailing commas, line length —
+   every choice a formatter makes is owned by the repository's formatter, whose
+   configuration the pipeline cannot read. One repository sets `singleQuote:
+   true`, the next leaves the default and gets double quotes, so the same
+   advice is right in one and wrong in the other.
+2. **Numbers in prose.** A number in prose is not a magic number:
+   `magic_numbers` is a rule about numeric literals in executable code. A number
+   inside a comment, a cron expression, a version, a SHA prefix or a retry count
+   is not one — and the place for its explanation is the comment beside it.
+3. **Comments without a rule.** Comment length, comment duplication and comment
+   placement are not rules of any repository. A `comments` finding must name the
+   rule it violates: a comment that contradicts the code, or one that describes
+   behaviour the code no longer has.
+
+Measured on the diff that produced them — a 75-line YAML workflow in
+`web3eco/verification-tools#26` — the old spec returned five findings and the
+new one returns none.
+
 ## When to use
 
 - **TypeScript / React projects** adopting strict conventions
