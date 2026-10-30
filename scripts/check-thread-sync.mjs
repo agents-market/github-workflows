@@ -402,6 +402,28 @@ const check = (name, ok, detail = '') => {
   check('the reference consumer no longer carries its own copy of the class reader',
     !/const classOfText = /.test(reference), 'ai-review.yml still defines its own classOfText');
   check('the reference consumer points at the contract', /thread-sync-contract\.md/.test(reference), '');
+
+  // The module is ESM and actions/github-script runs on node20, where
+  // `require()` of an ES module is not available on every runner image.
+  // `import()` is.
+  for (const [name, text] of [['the reusable workflow', reusable], ['the reference consumer', reference]]) {
+    check(`${name} loads the module with import(), not require()`, /await import\(/.test(text), '');
+    check(`${name} does not require() the module`, !/require\(SRC\)/.test(text), '');
+  }
+
+  // The reusable workflow fetches the module from this repository. It has to
+  // check out THIS repository — a workflow called from another repository
+  // has no such file — and it has to do it at the commit the caller called.
+  //
+  // `job.workflow_sha`, not `github.workflow_sha`: for a job defined in a
+  // reusable workflow the `job` context carries the reusable workflow's own
+  // ref and sha, while `github.*` carries the caller's. Checking out the
+  // caller's repository finds no such file, and the failure reads as "the
+  // step does not exist" rather than "the wrong repository was checked out".
+  check('the reusable workflow checks out this repository', /repository: agents-market\/github-workflows/.test(reusable), '');
+  check('the reusable workflow checks out at the sha the caller called', /ref: \$\{\{ job\.workflow_sha \}\}/.test(reusable), '');
+  check('the reusable workflow does not check out the caller\'s repository',
+    !/ref: \$\{\{ github\.workflow_ref/.test(reusable) && !/ref: \$\{\{ github\.workflow_sha/.test(reusable), '');
 }
 
 // 13. The contract is written down, and the things it promises are in it.

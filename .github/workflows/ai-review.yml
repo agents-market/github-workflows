@@ -596,9 +596,12 @@ jobs:
             // The step is not here: it is in scripts/thread-sync.mjs, and the
             // reusable workflow (.github/workflows/thread-sync.yml) uses that
             // same file. What is here is the wiring.
+            //
+            // `import()`, not `require()`: the module is ESM and
+            // actions/github-script runs on node20, where `require()` of an
+            // ES module is not available on every runner image.
             const path = require('node:path');
             const SRC = path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'thread-sync.mjs');
-            const { syncThreads } = require(SRC);
 
             let findings = [];
             try { findings = JSON.parse(process.env.FINDINGS || '[]'); } catch {}
@@ -607,6 +610,7 @@ jobs:
             try { cwe = JSON.parse(process.env.CWE_REPORT || '{}'); } catch {}
 
             try {
+              const { syncThreads } = await import(SRC);
               const r = await syncThreads({
                 github, context, findings,
                 marker: process.env.MARKER,

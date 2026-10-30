@@ -98,7 +98,6 @@ jobs:
       - name: The autofix applies the fix, and refuses the ones it cannot
         run: node scripts/check-error-autofix.mjs
 
-<<<<<<< HEAD
       # style-review spent five threads on a 75-line YAML file, and not one of
       # them was a defect: advice the repository's own formatter contradicts,
       # a comment length rule no repository has, and two "magic numbers" that
@@ -125,7 +124,6 @@ jobs:
       # stand-in for the GitHub API.
       - name: The thread sync keeps one comment per class, and says so
         run: node scripts/check-thread-sync.mjs
->>>>>>> ee9aa25 (feat(thread-sync): one implementation, one contract, one behaviour)
 
       # The autofix example fetches its script from this repository at a ref.
       # A ref that does not resolve fails every job of every repository that
