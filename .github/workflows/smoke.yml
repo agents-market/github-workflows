@@ -98,6 +98,14 @@ jobs:
       - name: The autofix applies the fix, and refuses the ones it cannot
         run: node scripts/check-error-autofix.mjs
 
+      # style-review spent five threads on a 75-line YAML file, and not one of
+      # them was a defect: advice the repository's own formatter contradicts,
+      # a comment length rule no repository has, and two "magic numbers" that
+      # were numbers in prose. The spec now says what it does not report, and
+      # this check says the spec still says it.
+      - name: The style review says nothing about what a formatter owns
+        run: node scripts/check-style-review.mjs
+
       # The autofix example fetches its script from this repository at a ref.
       # A ref that does not resolve fails every job of every repository that
       # pasted the file, and the person who pasted it cannot tell that the
