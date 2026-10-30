@@ -121,6 +121,43 @@ stopped.
 For wiring a pipeline directly rather than through the review workflow, see
 `agents-market/pipeline-action@0ab99cfca4566494f6d84d4e0b08fd11a3bf6c21 # v0.4.12 (merges input defaults; validates output locally)`.
 
+### The inline thread sync — a step you call, not a step you copy
+
+The review leaves a comment on the pull request for each finding. The part
+that decides whether such a comment is a **new finding** or **the same
+finding one line lower** is the thread sync, and it used to live inside
+`ai-review.yml` as a block every consumer had to copy. The fork
+[`web3eco/shared-actions`](https://github.com/web3eco/shared-actions/pull/103)
+copied it and ended up with a different behaviour from the original, because
+the behaviour was never written down.
+
+It is now a reusable workflow, and the decisions live in one file —
+[`scripts/thread-sync.mjs`](scripts/thread-sync.mjs) — that the reusable
+workflow and the reference consumer both run:
+
+```yaml
+  - name: Sync inline review threads
+    uses: agents-market/github-workflows/.github/workflows/thread-sync.yml@<full-commit-sha>
+    with:
+      findings: ${{ steps.review.outputs.findings_json }}
+      marker: code-review-security-audit
+```
+
+The **class** of a finding is its identity — the line moves, the class does
+not. The class is the CWE id of a security finding, or the category tag a
+style finding opens its message with (`[naming]` → `NAMING`). Two ids that
+name one weakness are folded together, so the reader is not shown the same
+weakness twice.
+
+A finding that did **not** move keeps its comment: the reader is told once,
+not once per push. A finding that moved has its old thread closed and is
+posted afresh.
+
+What a consumer may rely on, and what a change breaks, is in
+[`docs/thread-sync-contract.md`](docs/thread-sync-contract.md). The contract
+has a version, and `scripts/check-thread-sync.mjs` checks that the code and
+the document still agree.
+
 ### `examples/` — sample integrations
 
 Start here if you want to see something working before you understand anything

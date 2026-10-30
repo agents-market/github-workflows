@@ -1,0 +1,119 @@
+# The inline thread sync, as something a consumer calls.
+#
+#   uses: agents-market/github-workflows/.github/workflows/thread-sync.yml@<sha>
+#   with:
+#     findings: ${{ steps.review.outputs.findings_json }}
+#     marker: code-review-security-audit
+#   secrets: inherit
+#
+# This is the step that decides whether a review comment is a new finding or
+# the same finding one line lower. It used to live as a two-hundred-line
+# `github-script` block inside `ai-review.yml`, and every consumer that wanted
+# it had to copy it — which is where it started to diverge. The fork
+# `web3eco/shared-actions` (PR #103) copied it and had to make two decisions
+# the upstream never had to make, because upstream was the only
+# implementation: whether a finding that did not move keeps its comment, and
+# what the class marker and the CANON map mean. See issue #38.
+#
+# The step itself lives in `scripts/thread-sync.mjs`, and the reference
+# consumer `ai-review.yml` runs that same file — one implementation, not two.
+#
+# The contract this implements is in docs/thread-sync-contract.md. Read it
+# before changing the marker format or the CANON map: a consumer that reads
+# its own comments back breaks silently when either moves.
+#
+# Pin the full commit SHA, per CONTRIBUTING.md — never a tag.
+name: Thread Sync
+
+on:
+  workflow_call:
+    inputs:
+      findings:
+        description: >-
+          'The findings of this round, as a JSON array. Each finding wants
+          `file` (string), `line` (number), `severity` (string), `message`
+          (string), `confidence` (number, 0..1), and for a security audit
+          `cwe` (the CWE id) and `recommendation` (string). A finding without
+          `file` and `line` cannot be anchored and is skipped.'
+        required: true
+        type: string
+      marker:
+        description: >-
+          'The pipeline id. It is written into every comment as
+          `<!-- am:<marker> -->`, and it is how the next run of the same
+          pipeline recognises its own comments — and how two pipelines on the
+          same pull request keep off each other''s threads.'
+        required: true
+        type: string
+      cwe_report:
+        description: >-
+          'The catalogue report, as JSON: `{ "verified": { "CWE-89": {
+          "name": ..., "short": ..., "url": ... } } }`. A CWE id that is not
+          in `verified` is printed as "not in the published catalogue"
+          rather than cited as if it were checked.'
+        required: false
+        type: string
+        default: '{}'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Sync inline review threads
+    # The sync is a report, not a gate: a pull request that cannot be
+    # annotated must not be blocked. The step carries
+    # `continue-on-error`, so a broken sync must be recorded where a reader
+    # looks — the job summary — or it reads as "no findings".
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The step is a file in this repository. A reusable workflow called
+      # from another repository does not have it, so it fetches it from here —
+      # at the same ref the caller called.
+      - name: Fetch the thread sync
+        uses: actions/checkout@v7
+        with:
+          repository: agents-market/github-workflows
+          ref: ${{ github.workflow_ref }}
+          sparse-checkout: scripts/thread-sync.mjs
+          sparse-checkout-cone-mode: false
+          path: thread-sync-src
+
+      - name: Sync the threads
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          FINDINGS: ${{ inputs.findings }}
+          MARKER: ${{ inputs.marker }}
+          CWE_REPORT: ${{ inputs.cwe_report }}
+        with:
+          script: |
+            // The step is not here: it is in scripts/thread-sync.mjs, and the
+            // reference consumer (.github/workflows/ai-review.yml) uses that
+            // same file. What is here is the wiring.
+            const path = require('node:path');
+            const SRC = path.join(process.env.GITHUB_WORKSPACE, 'thread-sync-src', 'scripts', 'thread-sync.mjs');
+            const { syncThreads } = require(SRC);
+
+            let findings = [];
+            try { findings = JSON.parse(process.env.FINDINGS || '[]'); } catch {}
+            if (!Array.isArray(findings)) findings = [];
+            let cwe = {};
+            try { cwe = JSON.parse(process.env.CWE_REPORT || '{}'); } catch {}
+
+            try {
+              const r = await syncThreads({
+                github, context, findings,
+                marker: process.env.MARKER,
+                verified: cwe.verified || {},
+                warn: (m) => core.warning(m),
+              });
+              core.info(`threads(${process.env.MARKER}) — ${r.posted} posted, ${r.resolved} resolved, ${r.replaced} replaced, ${r.skipped} suppressed`);
+            } catch (e) {
+              core.warning(`thread sync FAILED — inline threads not synced: ${e.message}`);
+              await core.summary.addHeading('Inline thread sync failed', 3)
+                .addRaw(e.message).write();
+            }

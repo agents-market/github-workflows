@@ -98,6 +98,7 @@ jobs:
       - name: The autofix applies the fix, and refuses the ones it cannot
         run: node scripts/check-error-autofix.mjs
 
+<<<<<<< HEAD
       # style-review spent five threads on a 75-line YAML file, and not one of
       # them was a defect: advice the repository's own formatter contradicts,
       # a comment length rule no repository has, and two "magic numbers" that
@@ -113,6 +114,18 @@ jobs:
       # instead of returning an empty answer.
       - name: A malformed answer is retried, and a hopeless one fails loudly
         run: node scripts/check-output-retry.mjs
+      # The thread sync is the half of the review that decides what a comment
+      # on a pull request means: a new finding, or the same finding one line
+      # lower. It used to be a block inside ai-review.yml that every consumer
+      # had to copy, and the copy in web3eco/shared-actions behaved
+      # differently from the original — the behaviour was never written down.
+      # Now it is one file, and the check is what says it still behaves.
+      #
+      # The check needs no network and no token: it runs the step against a
+      # stand-in for the GitHub API.
+      - name: The thread sync keeps one comment per class, and says so
+        run: node scripts/check-thread-sync.mjs
+>>>>>>> ee9aa25 (feat(thread-sync): one implementation, one contract, one behaviour)
 
       # The autofix example fetches its script from this repository at a ref.
       # A ref that does not resolve fails every job of every repository that
