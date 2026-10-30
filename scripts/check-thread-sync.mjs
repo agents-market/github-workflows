@@ -351,7 +351,24 @@ const check = (name, ok, detail = '') => {
       JSON.stringify(r));
   }
 
-  // Round 7: the token cannot close the thread. The standing comment stays
+  // Round 8: a legacy thread — posted before the class marker existed — of
+  // the style pipeline. Its class is the category tag after the
+  // confidence. A finding of the same class on the same line must recognise
+  // it and leave it alone: a legacy thread that reads as classless is a
+  // thread that is never closed, and the pull request collects one per
+  // finding per push.
+  {
+    const legacy = mkThread('t1', 'src/a.ts', 10,
+      '<!-- am:p -->\n🟡 **HIGH** (conf 80%): [naming] x is a bad name');
+    const { github, calls } = makeGithub([legacy], ['src/a.ts']);
+    const style = { file: 'src/a.ts', line: 10, severity: 'medium', message: '[naming] x is a bad name', confidence: 0.8 };
+    const r = await syncThreads({ github, context, findings: [style], marker: 'p', warn: (m) => calls.warned.push(m) });
+    check('a legacy style thread is recognised, so nothing is posted', r.posted === 0 && calls.posted.length === 0,
+      JSON.stringify(r));
+    check('a legacy style thread is not closed either', r.replaced === 0 && r.resolved === 0, JSON.stringify(r));
+  }
+
+  // Round 9: the token cannot close the thread. The standing comment stays
   // and no second one is posted next to it.
   {
     const standing = mkThread('t1', 'src/a.ts', 10,
