@@ -18,7 +18,7 @@
 # supply executor_url via CLI flag or server routing config (runtime concept).
 #
 # Input validation: provider (enum minimax/openrouter/openai/anthropic/replicate, default minimax); model (string, default MiniMax-M3); code_diff (string, required, 1..50000 chars); language (enum ts/js/py/rs/go/solidity/generic, default generic); focus_area (enum security|performance|style|all, default security); severity_threshold (enum low|medium|high|critical, default medium).
-# Output schema: deep_review.findings[{file,line,severity,description,fix_suggestion,cwe_id,confidence}], summary{overall_risk_score 0-10}, recommendations[str] (≤5, prioritized).
+# Output schema: deep_review.findings[{file,line,severity,description,fix_suggestion,cwe_id,confidence}], summary{overall_risk_score 0-10}, recommendations[str] (≤5, prioritized), markdown_report[str] (markdown PR-comment report).
 name: code-review-security-audit
 version: 3.4.5
 description: AI security audit of code diffs — structured findings (severity, line, CWE, fix), aggregate summary with risk score, and prioritized remediation recommendations.
@@ -75,6 +75,16 @@ outputs:
     format: structured_json
     description: "Array of ≤5 prioritized remediation strings (≤200 chars each, ordered by impact)."
     fields: [recommendations]
+  # The `aggregate` stage has always produced this — it declares it, the
+  # pipeline's own test asserts it, and the README shows it in the output
+  # envelope. It was not exposed here, so every caller that asked for
+  # `report.markdown_report` got nothing and wrote a fallback string into the
+  # PR comment. `scripts/check-pipeline-outputs.mjs` now says the last stage
+  # cannot lose a field on the way out.
+  markdown_report:
+    format: structured_json
+    description: "Markdown summary suitable for PR comment (≤50 lines)."
+    fields: [markdown_report]
 
 defaults:
   model: MiniMax-M3

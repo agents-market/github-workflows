@@ -106,6 +106,15 @@ jobs:
       - name: The style review says nothing about what a formatter owns
         run: node scripts/check-style-review.mjs
 
+      # The last stage of code-review-security-audit produced a
+      # `markdown_report` — the stage declared it, the pipeline's own test
+      # asserted it, its README showed it in the output envelope — and the
+      # pipeline did not expose it. Every caller that asked for the field got
+      # nothing and wrote a fallback into the PR comment. Nothing in the spec
+      # said the field had to be reachable, so nothing said it was missing.
+      - name: A pipeline exposes what its last stage produces
+        run: node scripts/check-pipeline-outputs.mjs
+
       # A stage whose answer is not valid JSON used to end the run on the first
       # attempt, and the two stages before it had already been paid for. The
       # runtime can recover since 0.5.1; this check proves the published
