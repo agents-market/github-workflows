@@ -77,10 +77,15 @@ outputs:
     fields: [recommendations]
   # The `aggregate` stage has always produced this — it declares it, the
   # pipeline's own test asserts it, and the README shows it in the output
-  # envelope. It was not exposed here, so every caller that asked for
-  # `report.markdown_report` got nothing and wrote a fallback string into the
-  # PR comment. `scripts/check-pipeline-outputs.mjs` now says the last stage
-  # cannot lose a field on the way out.
+  # envelope. The spec did not declare it, so the spec, the stage and the
+  # README disagreed about what this pipeline produces.
+  #
+  # Nothing was lost on the way to a caller: the declared `outputs:` block is
+  # not projected by the runtime, the server, the CLI or the action, and the
+  # consumer in `web3eco/shared-actions` reads the stage's own JSON — it has
+  # been getting this report all along. What was wrong was the contract.
+  # `scripts/check-pipeline-outputs.mjs` now says the spec cannot under-declare
+  # what the last stage produces.
   markdown_report:
     format: structured_json
     description: "Markdown summary suitable for PR comment (≤50 lines)."

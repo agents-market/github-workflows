@@ -109,10 +109,11 @@ jobs:
       # The last stage of code-review-security-audit produced a
       # `markdown_report` — the stage declared it, the pipeline's own test
       # asserted it, its README showed it in the output envelope — and the
-      # pipeline did not expose it. Every caller that asked for the field got
-      # nothing and wrote a fallback into the PR comment. Nothing in the spec
-      # said the field had to be reachable, so nothing said it was missing.
-      - name: A pipeline exposes what its last stage produces
+      # spec did not. Nothing was lost on the way to a caller: the declared
+      # `outputs:` block is not projected at runtime, and the consumer reads
+      # the stage's own JSON. What was wrong was the contract, and nothing
+      # compared the spec with the stage, so nothing said it was missing.
+      - name: A pipeline declares what its last stage produces
         run: node scripts/check-pipeline-outputs.mjs
 
       # A stage whose answer is not valid JSON used to end the run on the first
