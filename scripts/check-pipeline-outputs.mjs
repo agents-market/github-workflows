@@ -1,26 +1,27 @@
 #!/usr/bin/env node
-// What a pipeline must not drop between its last stage and its caller.
+// What a pipeline must not forget between its last stage and its spec.
 //
 //   node scripts/check-pipeline-outputs.mjs [spec.yaml ...]
 //
 // `code-review-security-audit` produced a `markdown_report`: the last stage
 // declared it, the pipeline's own `test.yaml` asserted it, and the README
-// showed it in the output envelope. The pipeline did not expose it. Every
-// caller that asked for `report.markdown_report` — the consumer in
-// `web3eco/shared-actions` among them — got nothing, and wrote the fallback
-// string into every PR comment.
+// showed it in the output envelope. The spec's `outputs:` did not.
 //
-// The drop was invisible. The stage ran, the test passed, the README was
-// right, and the catalogue served a pipeline that threw a field away on the
-// way out. Nothing in the spec said the field had to be reachable.
+// Nothing was lost on the way to a caller. The declared `outputs:` block is
+// not projected by the runtime, the server, the CLI or the action — a caller
+// that reads the stage's own JSON gets the whole stage output, which is how
+// the consumer in `web3eco/shared-actions` reads it, and it has been getting
+// this report all along. What was wrong was the contract: the spec
+// under-declared what the pipeline produces, so the spec, the stage and the
+// README disagreed, and nobody noticed because nothing compared them.
 //
 // This check reads the spec and asserts that every field the last stage
-// produces is reachable through the pipeline's `outputs`. The spec path is an
+// produces is declared in the pipeline's `outputs`. The spec path is an
 // argument so the check can be pointed at an old spec: on the old spec it
 // fails, which is the only way to know that it can fail.
 //
 // It is a shape check, not a behaviour check. It cannot prove the model
-// writes a report; it proves the pipeline does not throw the report away.
+// writes a report; it proves the spec says what the pipeline produces.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
