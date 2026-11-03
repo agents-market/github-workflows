@@ -67,6 +67,7 @@ security and style in the same PR.
 | `language` | enum | `generic` | `typescript` / `javascript` / `python` / `rust` / `go` / `solidity` / `generic` |
 | `focus_area` | enum | `all` | `naming` / `types` / `exports` / `magic_numbers` / `all` |
 | `severity_threshold` | enum | `low` | `low` / `medium` / `high` / `critical` — drop findings below this floor |
+| `category_thresholds` | string | `""` | `category=level` pairs, comma-separated — `none` drops the category, a severity level keeps only that category's findings at or above it |
 | `provider` | enum | `minimax` | `minimax` / `openrouter` / `openai` / `anthropic` / `replicate` — the LLM provider for this run |
 | `model` | string | `MiniMax-M3` | The LLM model for this run — must be one the chosen provider carries |
 
@@ -126,6 +127,60 @@ times, at 99% confidence each.
 
 The aggregate stage now copies the analyze stage's findings verbatim, and the
 analyze stage is told that two findings with one cause are one finding.
+
+## The severity scale
+
+`severity` is what a finding costs the reader, and the scale is fixed:
+
+| severity | the reader |
+|---|---|
+| `low` | can ignore it and lose nothing — a missing type annotation, an abbreviation, an unused export |
+| `medium` | has to decide something — rename it, type it, delete it. The remark is right and the code works anyway |
+| `high` | the remark is right and the code misleads — a comment that contradicts the code, a name that says the opposite of what the function does, a literal whose unit nobody can tell |
+| `critical` | the code is wrong now, in a way the reader has to fix before merge |
+
+A finding's severity does not depend on what else the diff contains: the same
+finding gets the same severity every time. Without the scale, the same finding
+came back `low` in one run and `medium` in the next — on the case corpus in
+`fixtures/style-review`, two of the six cases floated between the two levels.
+With the scale, both are fixed and no new case floats.
+
+The scale moves the calibration, and that is a choice rather than a bug. On the
+same corpus, the findings of a run were 37 `low` and 6 `medium` before it, and
+26 `low`, 3 `medium` and 11 `high` after: a comment that contradicts the code
+and a literal whose unit nobody can tell are `high` now, because that is what
+they cost the reader.
+
+The scale does not make a finding appear. A remark the pipeline finds in three
+runs out of six is still a remark the reader sees half the time, and no scale
+changes that: it labels a finding, it does not detect it.
+
+## The per-category cut-off
+
+**A per-category cut-off.** `severity_threshold` is one floor for the whole
+pipeline, and a consumer whose repository has no unexplained numeric literals
+still pays for every one the pipeline finds in a config file. The new
+`category_thresholds` input is a set of per-category floors:
+
+```
+category_thresholds: "magic_numbers=none,comments=high"
+```
+
+`none` drops the category entirely; a severity level keeps only that
+category's findings at or above it. The default is empty, which cuts nothing
+off — a caller that does not pass the input gets the pipeline it had.
+
+Measured on the case corpus in `fixtures/style-review` (108 runs, MiniMax-M3,
+temperature 0, $0.94): with `magic_numbers=none`, every `magic_numbers`
+finding is gone — 8 of 36 runs in the control arm, 0 of 36 in the cut arm —
+and no finding is renamed into another category to get around the cut. The
+other categories are unaffected, and the run is marginally cheaper.
+
+The cut-off removes true findings as well as false ones: a genuine unexplained
+literal is a `magic_numbers` finding, and it goes with the rest. That is the
+trade the caller is making — a scope, not a filter. It also does not fix the
+instability the pipeline is known for: a finding of another class still
+appears in one run and not in the next.
 
 ## Installation
 

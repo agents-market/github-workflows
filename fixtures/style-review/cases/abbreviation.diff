@@ -1,0 +1,13 @@
+diff --git a/src/services/payment.ts b/src/services/payment.ts
+index 7777777..8888888 100644
+--- a/src/services/payment.ts
++++ b/src/services/payment.ts
+@@ -1,4 +1,10 @@
++export function getUsrPymtDtls(usrId: string) {
++  const usrCnt = countUsrs(usrId);
++  return { usrCnt, usrId };
++}
++
+ export function getPaymentDetails(paymentId: string) {
+   return db.query('select * from payments where id = ?', [paymentId]);
+ }

@@ -1,0 +1,19 @@
+diff --git a/src/api/users.ts b/src/api/users.ts
+index 3333333..4444444 100644
+--- a/src/api/users.ts
++++ b/src/api/users.ts
+@@ -10,6 +10,14 @@ export function loadUsers() {
+   return rows;
+ }
+
++export function findUser(id, includeDeleted) {
++  return db.query('select * from users where id = ?', [id]);
++}
++
++export function countActive() {
++  return db.query('select count(*) from users where deleted_at is null');
++}
++
+ export function loadTeams() {
+   return db.query('select * from teams');
+ }

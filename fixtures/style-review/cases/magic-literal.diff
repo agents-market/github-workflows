@@ -1,0 +1,12 @@
+diff --git a/src/session.ts b/src/session.ts
+index bbbbbbb..ccccccc 100644
+--- a/src/session.ts
++++ b/src/session.ts
+@@ -1,4 +1,8 @@
++export function isExpired(createdAt: number): boolean {
++  return Date.now() - createdAt > 86400;
++}
++
+ export function isRevoked(revokedAt: number | null): boolean {
+   return revokedAt !== null;
+ }

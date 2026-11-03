@@ -1,0 +1,11 @@
+diff --git a/config/defaults.yaml b/config/defaults.yaml
+index 1111111..2222222 100644
+--- a/config/defaults.yaml
++++ b/config/defaults.yaml
+@@ -1,5 +1,8 @@
+ timeout_ms: 30000
+ retry_limit: 5
++# Idle connections to keep open per host.
++keep_alive_pool_size: 64
+ cache_ttl_seconds: 3600
+ rate_limit_rps: 100
