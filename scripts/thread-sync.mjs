@@ -24,12 +24,16 @@
  * pin this; a change to the marker format or to the CANON map bumps it.
  *
  * Bump the minor part for a behaviour change a consumer can observe (a
- * different decision about a thread that did not move), and the major part
- * for a change to the *shape* of the contract (the marker format, the CANON
- * map itself) — a consumer that reads its own comments back has to be
- * re-read after a major bump.
+ * different decision about a thread that did not move, a verdict that hides a
+ * finding), and the major part for a change to the *shape* of the contract
+ * (the marker format, the CANON map itself) — a consumer that reads its own
+ * comments back has to be re-read after a major bump.
+ *
+ * 1.1 — the verdict layer: a finding a human decided about is not reported
+ * again. The marker format and the CANON map did not move, so a consumer
+ * that reads its own comments back is unaffected.
  */
-export const CONTRACT_VERSION = '1.0';
+export const CONTRACT_VERSION = '1.1';
 
 /**
  * Two ids that name one weakness are one weakness.
@@ -152,6 +156,275 @@ export const classOfText = (text) => {
 };
 
 /**
+ * Where the verdicts live.
+ *
+ * A fixed path, not a knob: the caller may not choose which file of the
+ * base commit is read as verdicts, because "which file" is the thing a
+ * caller must not decide.
+ */
+export const DEFAULT_VERDICTS_PATH = '.github/ai-review-verdicts.json';
+
+/**
+ * The verdicts, read from the base of the pull request.
+ *
+ * A verdict silences a finding, so the verdicts of the pull request are the
+ * verdicts of its author — and a pull request that carries its own verdicts
+ * silences the review of its own pull request. The base is the state the
+ * maintainer agreed to, so that is where they are read from.
+ *
+ * The caller says nothing at all about the verdicts: not where they live,
+ * and not what they are. That is the whole security property of this layer,
+ * and it is why this reads the file instead of taking it as an input.
+ *
+ * @param {object} io
+ * @param {object} io.github    the `github` object of actions/github-script
+ * @param {object} io.context  the `context` object of actions/github-script
+ * @param {function} [io.warn] how to report a warning
+ * @returns {Promise<string>}  the content of the file, or an empty string
+ */
+export const readVerdicts = async ({ github, context, warn = () => {} }) => {
+  const ref = context.payload && context.payload.pull_request
+    && context.payload.pull_request.base && context.payload.pull_request.base.sha;
+  if (!ref) return '';
+  try {
+    const { data } = await github.rest.repos.getContent({
+      ...context.repo, path: DEFAULT_VERDICTS_PATH, ref,
+    });
+    const content = data && data.content;
+    if (!content) return '';
+    return Buffer.from(content, 'base64').toString('utf8');
+  } catch (e) {
+    // No file at the base is the normal case: the repository has no verdicts
+    // yet. Anything else is worth saying out loud.
+    if (e.status !== 404) warn(`verdicts: ${DEFAULT_VERDICTS_PATH} could not be read from the base — ${e.message}`);
+    return '';
+  }
+};
+
+/**
+ * The key a verdict is filed under.
+ *
+ * `path` is the whole file; `path::CLASS` is one class in it. The class part
+ * is the same identity the sync keys a thread by, so a verdict and a thread
+ * talk about the same thing.
+ */
+export const verdictKey = (file, cls) => (cls ? `${file}::${cls}` : String(file || ''));
+
+/**
+ * The verdict a human did not write down as anything else.
+ *
+ * The value is recorded, not acted upon: any verdict covers the finding. The
+ * name is here because the value appears in the contract, in the module and
+ * in the tests, and a literal in three places is three places to drift.
+ */
+export const DEFAULT_VERDICT = 'accepted';
+
+/**
+ * How long a verdict may last.
+ *
+ * A verdict without a date is not a decision about a finding — it is a
+ * decision to never be told about it again, and it does not apply. A date
+ * further out than this is capped, for the same reason: a verdict that hides
+ * a finding for ever hides a defect that appears tomorrow too.
+ */
+export const MAX_HORIZON_DAYS = 365;
+
+/**
+ * Text inside a code span: nothing may close the span.
+ *
+ * The key carries a path the model read out of the diff, so it is data, not
+ * a name anyone chose.
+ */
+const safeCode = (value, max = 200) => String(value == null ? '' : value)
+  .replace(/\s+/g, ' ')
+  .replace(/`/g, "'")
+  .trim()
+  .slice(0, max);
+
+/**
+ * Plain text in a comment the bot posts: no markup, no mention.
+ *
+ * What the bot posts is attributed to the bot. A path from the diff and a
+ * reason from a file must not be able to put a link, an image or a ping
+ * under its name.
+ */
+const safeText = (value, max = 200) => safeCode(value, max)
+  .replace(/[<>@]/g, '')
+  .replace(/([\\*_\[\]()|])/g, '\\$1');
+
+/**
+ * The text of a failure, for a comment the bot posts.
+ *
+ * A failure message can carry a path from the diff — the diff is written by
+ * whoever opened the pull request — so it is text like any other and gets
+ * the same treatment. One implementation, so the two callers cannot drift.
+ *
+ * @param {Error|string} e  what went wrong
+ * @param {number} [max]    how much of it to keep
+ * @returns {string}  text, safe to print
+ */
+export const errorText = (e, max = 200) => safeText(e && e.message ? e.message : e, max);
+
+/**
+ * The key as it is written down, normalised.
+ *
+ * The class part is folded through the CANON map, exactly as a finding's class
+ * is: a verdict filed under `CWE-330` covers a `CWE-338` finding, because they
+ * are one weakness. The path is left alone — a path is case-sensitive.
+ */
+const normalizeVerdictKey = (key) => {
+  const k = String(key || '');
+  const at = k.lastIndexOf('::');
+  return at < 0 ? k : `${k.slice(0, at)}::${canon(k.slice(at + 2))}`;
+};
+
+/**
+ * The verdicts: what a human decided about a file, or about a class in it.
+ *
+ * A verdict is a file the human wrote and the repository keeps, so the
+ * decision survives the next push and the next pull request. It is what the
+ * workflow layer was missing: the sync knew what it had already said, but not
+ * what a human had already decided.
+ *
+ * The content is JSON, because the step runs on a runner with no packages: the
+ * module is fetched with a sparse checkout and nothing else. A YAML parser is
+ * not available there, and a hand-written one is a bug factory.
+ *
+ * A malformed file hides nothing: an unreadable verdict leaves every finding
+ * reported, and says so.
+ *
+ * @param {string|object} raw  the content of the verdicts file
+ * @param {object} [opts]
+ * @param {Date} [opts.now]    what "now" is, for `until`
+ * @returns {{entries: Map<string, object>, errors: string[]}}
+ */
+export const parseVerdicts = (raw, { now = new Date() } = {}) => {
+  const entries = new Map();
+  const errors = [];
+  let data = raw;
+  if (typeof raw === 'string') {
+    const text = raw.trim();
+    if (!text) return { entries, errors };
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return { entries, errors: [`verdicts: not valid JSON — ${e.message}`] };
+    }
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { entries, errors: ['verdicts: expected an object of key → verdict'] };
+  }
+  for (const [written, value] of Object.entries(data)) {
+    const entry = typeof value === 'string'
+      ? { reason: value }
+      : (value && typeof value === 'object' && !Array.isArray(value) ? value : null);
+    if (!entry) {
+      errors.push(`verdicts: "${written}" is not a verdict`);
+      continue;
+    }
+    let expired = false;
+    let until = null;
+    const written_until = entry.until ? String(entry.until).trim() : null;
+    if (!written_until) {
+      // Every verdict expires. A verdict with no date is not a decision
+      // about this finding — it is a decision never to be told about it
+      // again — and it does not apply.
+      errors.push(`verdicts: "${written}" has no "until" date — it does not apply`);
+      expired = true;
+    } else {
+      const at = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(written_until) ? `${written_until}T00:00:00Z` : written_until);
+      // An unreadable date is treated as expired: a verdict that hides a
+      // finding forever because of a typo is the worse failure.
+      if (Number.isNaN(at)) {
+        errors.push(`verdicts: "${written}" has an unreadable "until" — it does not apply`);
+        expired = true;
+      } else {
+        const cap = now.getTime() + MAX_HORIZON_DAYS * 24 * 60 * 60 * 1000;
+        const effective = Math.min(at, cap);
+        until = new Date(effective).toISOString().slice(0, 10);
+        expired = effective <= now.getTime();
+        if (effective !== at) {
+          errors.push(`verdicts: "${written}" was capped to ${until} — a verdict lasts ${MAX_HORIZON_DAYS} days at most`);
+        }
+      }
+    }
+    const key = normalizeVerdictKey(written);
+    entries.set(key, {
+      key,
+      verdict: entry.verdict ? String(entry.verdict) : DEFAULT_VERDICT,
+      reason: entry.reason ? String(entry.reason) : '',
+      until,
+      expired,
+    });
+  }
+  return { entries, errors };
+};
+
+/**
+ * The verdict that covers a finding, or null.
+ *
+ * The class-level verdict wins over the file-level one: it is the more
+ * specific statement about the same file. An expired verdict covers nothing.
+ */
+export const verdictFor = (entries, file, cls) => {
+  if (!entries || !entries.size) return null;
+  const live = (key) => {
+    const v = entries.get(key);
+    return v && !v.expired ? v : null;
+  };
+  return (cls ? live(verdictKey(file, cls)) : null) || live(String(file || ''));
+};
+
+/**
+ * The verdict report, as markdown.
+ *
+ * Two things a reader needs: what was not reported and why, and what to write
+ * down to stop the rest. The second is here because the class of a style
+ * finding is not in the comment the reader sees — the tag is stripped from the
+ * reader's text — so without this the key cannot be written down.
+ *
+ * @param {object} vd  the `verdicts` of the sync's return value
+ * @param {object} [opts]
+ * @param {string} [opts.path]  where the verdicts live, for the reader
+ * @returns {string}  markdown, or an empty string when there is nothing to say
+ */
+export const verdictSummary = (vd = {}, { path = '' } = {}) => {
+  const covered = Array.isArray(vd.covered) ? vd.covered : [];
+  const expired = Array.isArray(vd.expired) ? vd.expired : [];
+  const hints = Array.isArray(vd.hints) ? vd.hints : [];
+  if (!covered.length && !expired.length && !hints.length) return '';
+  let b = '';
+  if (covered.length) {
+    b += `**Not reported — a human decided about ${covered.length} finding(s):**\n\n`;
+    for (const c of covered) {
+      b += `- \`${safeCode(c.key)}\` — ${safeText(c.verdict)}`;
+      if (c.reason) b += `: ${safeText(c.reason)}`;
+      if (c.until) b += ` (until ${safeCode(c.until)})`;
+      b += '\n';
+    }
+    b += '\n';
+  }
+  if (expired.length) {
+    b += `**Verdicts that do not apply** — these findings are reported again: `
+      + `${expired.map(k => `\`${safeCode(k)}\``).join(', ')}\n\n`;
+  }
+  if (hints.length) {
+    b += '<details><summary>Stop a finding being reported</summary>\n\n';
+    b += path
+      ? `Add the key to \`${safeCode(path)}\`:\n\n`
+      : 'Add the key to the verdicts file:\n\n';
+    for (const h of hints) {
+      const classes = Array.isArray(h.classes) ? h.classes : [];
+      for (const c of classes) b += `- \`${safeCode(verdictKey(h.file, c))}\`\n`;
+      if (!classes.length) b += `- \`${safeCode(h.file)}\`\n`;
+    }
+    b += '\nEvery verdict needs a `reason` and an `until` date — one without a date does not apply.\n\n';
+    b += '</details>\n';
+  }
+  return b;
+};
+
+/**
  * The decision this module makes, for one pull request, in one round.
  *
  * The plan is a pure function of what is already on the pull request and what
@@ -162,10 +435,12 @@ export const classOfText = (text) => {
  * @param {Array} input.threads   the threads of this pipeline, with their class
  * @param {Array} input.findings  the findings of this round
  * @param {Set|Array} input.inDiff  the files in the diff
- * @returns {{post: Array, close: Array, keep: Array, skipped: Array}}
+ * @param {Map|object|string} [input.verdicts]  what a human decided already
+ * @returns {{post: Array, close: Array, keep: Array, skipped: Array, covered: Array, expired: Array}}
  */
-export const planSync = ({ threads = [], findings = [], inDiff = [] } = {}) => {
+export const planSync = ({ threads = [], findings = [], inDiff = [], verdicts = null } = {}) => {
   const diff = inDiff instanceof Set ? inDiff : new Set(inDiff);
+  const entries = verdicts instanceof Map ? verdicts : parseVerdicts(verdicts).entries;
 
   // Live threads of this pipeline, by class and file. The class is the
   // identity: the line moves, the class does not.
@@ -203,12 +478,23 @@ export const planSync = ({ threads = [], findings = [], inDiff = [] } = {}) => {
   const post = [];
   const close = [];
   const skipped = [];
+  const covered = [];
   const closedIds = new Set();
 
   for (const f of findings) {
     if (!diff.has(f.file)) { skipped.push({ finding: f, why: 'file not in diff' }); continue; }
-    if (matched.has(f)) { skipped.push({ finding: f, why: 'same class on the same line' }); continue; }
     const cls = classOfFinding(f);
+    // A human decided about this file or this class: the finding is not
+    // reported again. The comment that is already there stays — it is the
+    // record of the decision, and closing it would erase the reason the
+    // finding is not reported.
+    const verdict = verdictFor(entries, f.file, cls);
+    if (verdict) {
+      skipped.push({ finding: f, why: 'verdict' });
+      covered.push({ finding: f, class: cls, verdict });
+      continue;
+    }
+    if (matched.has(f)) { skipped.push({ finding: f, why: 'same class on the same line' }); continue; }
     const standing = cls ? (byClass.get(`${f.file}::${cls}`) || []) : [];
     // The class moved to another line: close what it carried on this file,
     // then post the fresh one where the model puts it this time. A thread a
@@ -237,7 +523,31 @@ export const planSync = ({ threads = [], findings = [], inDiff = [] } = {}) => {
     }
   }
 
-  return { post, close, keep: [...kept], skipped };
+  // The keys a human would file to stop a finding being reported again.
+  // Every finding of this round that no verdict covers — a finding that
+  // matched a standing comment is in there too, because the reader wants to
+  // stop *that* one as well. The class of a style finding is not in the
+  // comment the reader sees, so without this the key cannot be written down.
+  const hintFiles = new Map();
+  for (const f of findings) {
+    if (!diff.has(f.file)) continue;
+    const cls = classOfFinding(f);
+    if (verdictFor(entries, f.file, cls)) continue;
+    const list = hintFiles.get(f.file) || [];
+    if (cls && !list.includes(cls)) list.push(cls);
+    hintFiles.set(f.file, list);
+  }
+  const hints = [...hintFiles.entries()].map(([file, classes]) => ({ file, classes }));
+
+  return {
+    post,
+    close,
+    keep: [...kept],
+    skipped,
+    covered,
+    expired: [...entries.values()].filter(v => v.expired).map(v => v.key),
+    hints,
+  };
 };
 
 /**
@@ -325,6 +635,13 @@ export const syncThreads = async ({ github, context, findings = [], marker, veri
   });
   const inDiff = new Set(files.map(f => f.filename));
 
+  // What a human decided already. The verdicts are read from the base of
+  // the pull request, by this module: the caller says nothing about them.
+  // A file that does not parse hides nothing — the errors are reported and
+  // every finding is reported as usual.
+  const parsed = parseVerdicts(await readVerdicts({ github, context, warn }));
+  for (const e of parsed.errors) warn(e);
+
   // The decision: which threads to close, which findings to post, which
   // threads a finding keeps.
   const plan = planSync({
@@ -338,6 +655,7 @@ export const syncThreads = async ({ github, context, findings = [], marker, veri
     })),
     findings: valid,
     inDiff,
+    verdicts: parsed.entries,
   });
 
   const closeThread = async (t) => {
@@ -412,7 +730,34 @@ export const syncThreads = async ({ github, context, findings = [], marker, veri
     }
   }
 
-  return { posted, resolved, replaced, skipped, live: plan.keep.length };
+  const report = {
+    covered: plan.covered.map(c => ({
+      key: c.verdict.key,
+      file: c.finding.file,
+      class: c.class,
+      verdict: c.verdict.verdict,
+      reason: c.verdict.reason,
+      until: c.verdict.until,
+    })),
+    expired: plan.expired,
+    hints: plan.hints,
+  };
+
+  return {
+    posted,
+    resolved,
+    replaced,
+    skipped,
+    live: plan.keep.length,
+    // What a human decided, and what they would have to decide to stop the
+    // rest. The caller renders this; the module does not know where it goes.
+    verdicts: report,
+    // What the step says. The wording lives here, so the reusable workflow and
+    // the reference consumer say the same thing.
+    logLine: `threads(${marker}) — ${posted} posted, ${resolved} resolved, `
+      + `${replaced} replaced, ${skipped} suppressed, ${report.covered.length} by verdict`,
+    summary: verdictSummary(report, { path: DEFAULT_VERDICTS_PATH }),
+  };
 };
 
 // Run as a script: what does this file say about itself?

@@ -23,7 +23,8 @@ on:
 # The permissions below are load-bearing. A reusable workflow can only narrow
 # the permissions it is given, so it asks for exactly what it needs:
 # `pull-requests: write` to post the inline comments, `issues: write` to post
-# the summary comment.
+# the summary comment, `contents: read` to read the verdicts file the thread
+# sync uses.
 #
 # Delete a line from that block and the run does not start. GitHub refuses the
 # called workflow — zero jobs, no comment, and no message that names the

@@ -9,18 +9,15 @@
 # This is the step that decides whether a review comment is a new finding or
 # the same finding one line lower. It used to live as a two-hundred-line
 # `github-script` block inside `ai-review.yml`, and every consumer that wanted
-# it had to copy it — which is where it started to diverge. The fork
-# `web3eco/shared-actions` (PR #103) copied it and had to make two decisions
-# the upstream never had to make, because upstream was the only
-# implementation: whether a finding that did not move keeps its comment, and
-# what the class marker and the CANON map mean. See issue #38.
+# it had to copy it — which is where it started to diverge. See issue #38.
 #
 # The step itself lives in `scripts/thread-sync.mjs`, and the reference
 # consumer `ai-review.yml` runs that same file — one implementation, not two.
 #
-# The contract this implements is in docs/thread-sync-contract.md. Read it
-# before changing the marker format or the CANON map: a consumer that reads
-# its own comments back breaks silently when either moves.
+# The contract this implements is in docs/thread-sync-contract.md — what the
+# class marker means, what the CANON map folds, what a verdict is. Read it
+# before changing any of them: a consumer that reads its own comments back
+# breaks silently when the marker moves.
 #
 # Pin the full commit SHA, per CONTRIBUTING.md — never a tag.
 name: Thread Sync
@@ -75,10 +72,9 @@ jobs:
       #
       # `job.workflow_sha`, not `github.workflow_sha`: for a job defined in a
       # reusable workflow, the `job` context carries the *reusable* workflow's
-      # own ref and sha, while `github.*` carries the caller's. `github`
-      # would check out the caller's repository and find no such file — and
-      # the failure would read as "the step does not exist" rather than "the
-      # wrong repository was checked out".
+      # own ref and sha, while `github.*` carries the caller's — which would
+      # check out the caller's repository, find no such file, and fail with
+      # "the step does not exist" instead of "the wrong repository".
       - name: Fetch the thread sync
         uses: actions/checkout@v7
         with:
@@ -102,9 +98,10 @@ jobs:
             // reference consumer (.github/workflows/ai-review.yml) uses that
             // same file. What is here is the wiring.
             //
-            // `import()`, not `require()`: the module is ESM and
+            // `import()`, not `require()`, for the module: it is ESM and
             // actions/github-script runs on node20, where `require()` of an
-            // ES module is not available on every runner image.
+            // ES module is not available on every runner image. `node:path`
+            // is a built-in, so `require()` is right for it.
             const path = require('node:path');
             const SRC = path.join(process.env.GITHUB_WORKSPACE, 'thread-sync-src', 'scripts', 'thread-sync.mjs');
 
@@ -114,17 +111,27 @@ jobs:
             let cwe = {};
             try { cwe = JSON.parse(process.env.CWE_REPORT || '{}'); } catch {}
 
+            let errorText = null;
             try {
-              const { syncThreads } = await import(SRC);
-              const r = await syncThreads({
+              const mod = await import(SRC);
+              errorText = mod.errorText;
+              const r = await mod.syncThreads({
                 github, context, findings,
                 marker: process.env.MARKER,
                 verified: cwe.verified || {},
                 warn: (m) => core.warning(m),
               });
-              core.info(`threads(${process.env.MARKER}) — ${r.posted} posted, ${r.resolved} resolved, ${r.replaced} replaced, ${r.skipped} suppressed`);
+              // The wording lives in the module, so this step and the
+              // reference consumer say the same thing.
+              core.info(r.logLine);
+              if (r.summary) await core.summary.addHeading('Verdicts', 3).addRaw(r.summary).write();
             } catch (e) {
-              core.warning(`thread sync FAILED — inline threads not synced: ${e.message}`);
+              // The message can carry a path from the diff: the module
+              // escapes it for the summary. The log gets the raw cause —
+              // it is not rendered as markdown, and it is where a
+              // developer looks for it.
+              const why = errorText ? errorText(e) : 'the sync module could not be loaded';
+              core.warning(`thread sync FAILED — inline threads not synced: ${e && e.message || e}`);
               await core.summary.addHeading('Inline thread sync failed', 3)
-                .addRaw(e.message).write();
+                .addRaw(why).write();
             }

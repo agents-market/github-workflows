@@ -469,6 +469,81 @@ jobs:
           echo "report=$(cat "$RUNNER_TEMP/cwe.json")" >> "$GITHUB_OUTPUT"
           python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("  CWE: %d/%d confirmed against the %s (%s), not found: %s" % (len(r["verified"]), len(r["used"]), r["source"], r["snapshot_date"] or "no catalogue", r["unknown"]))' "$RUNNER_TEMP/cwe.json"
 
+      # The decisions live in scripts/thread-sync.mjs, and the reusable
+      # workflow a consumer calls uses that same file — one implementation,
+      # not two. Two implementations side by side is how the fork
+      # web3eco/shared-actions ended up with two behaviours for the same
+      # step: the behaviour was never written down. See issue #38.
+      #
+      # The contract this implements is in docs/thread-sync-contract.md. It
+      # says what the class marker means, what the CANON map folds, what a
+      # finding that did not move does, and what a verdict is. Read it before
+      # changing any of them: a consumer reads its own comments back, and a
+      # change that breaks the marker breaks the next run silently.
+      #
+      # The checkout above already fetched the repository, so the module is
+      # on disk; only the script is needed.
+      #
+      # It runs before the summary comment below, because that comment says
+      # what was not reported and why — and a verdict is the reason.
+      - name: Sync inline review threads
+        id: sync
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          FINDINGS: ${{steps.review_retry.outputs.findings_json || steps.review.outputs.findings_json}}
+          MARKER: ${{ matrix.pipeline.slug }}
+          CWE_REPORT: ${{ steps.cwe.outputs.report || '{}' }}
+        with:
+          script: |
+            // The step is not here: it is in scripts/thread-sync.mjs, and the
+            // reusable workflow (.github/workflows/thread-sync.yml) uses that
+            // same file. What is here is the wiring.
+            //
+            // `import()`, not `require()`, for the module: it is ESM and
+            // actions/github-script runs on node20, where `require()` of an
+            // ES module is not available on every runner image. `node:path`
+            // is a built-in, so `require()` is right for it.
+            const path = require('node:path');
+            const SRC = path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'thread-sync.mjs');
+
+            let findings = [];
+            try { findings = JSON.parse(process.env.FINDINGS || '[]'); } catch {}
+            if (!Array.isArray(findings)) findings = [];
+            let cwe = {};
+            try { cwe = JSON.parse(process.env.CWE_REPORT || '{}'); } catch {}
+
+            let errorText = null;
+            try {
+              const mod = await import(SRC);
+              errorText = mod.errorText;
+              const r = await mod.syncThreads({
+                github, context, findings,
+                marker: process.env.MARKER,
+                verified: cwe.verified || {},
+                // The verdicts are read by the module — see readVerdicts.
+                // This file neither reads them nor passes them on.
+                warn: (m) => core.warning(m),
+              });
+              // The wording lives in the module, so this step and the
+              // reusable workflow say the same thing.
+              core.info(r.logLine);
+              // The summary comment below reads this: it says what was not
+              // reported and why.
+              core.setOutput('verdicts_report', r.summary);
+              if (r.summary) await core.summary.addHeading('Verdicts', 3).addRaw(r.summary).write();
+            } catch (e) {
+              // The message can carry a path from the diff: the module
+              // escapes it for the summary. The log gets the raw cause —
+              // it is not rendered as markdown, and it is where a
+              // developer looks for it.
+              const why = errorText ? errorText(e) : 'the sync module could not be loaded';
+              core.warning(`thread sync FAILED — inline threads not synced: ${e && e.message || e}`);
+              await core.summary.addHeading('Inline thread sync failed', 3)
+                .addRaw(why).write();
+            }
+
       - name: Upsert summary comment
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
@@ -485,6 +560,7 @@ jobs:
           RUN_STATUS: ${{steps.review_retry.outputs.status || steps.review.outputs.status}}
           FAILED_COUNT: ${{ steps.review_retry.outputs.failed_count || steps.review.outputs.failed_count || '0' }}
           MAX_SEVERITY: ${{ steps.review_retry.outputs.max_severity || steps.review.outputs.max_severity || '' }}
+          VERDICTS_REPORT: ${{ steps.sync.outputs.verdicts_report }}
         with:
           script: |
             try {
@@ -545,6 +621,12 @@ jobs:
                 } catch {}
                 b += md ? md.slice(0, 8000) + '\n'
                         : '_This pipeline emits no narrative report — see inline comments._\n';
+                // What was not reported and why. A finding a human decided
+                // about is not reported again, and without this the reader
+                // sees a missing finding and no reason for it. The rendering
+                // comes from the module — the sync step wrote it.
+                const verdicts = String(process.env.VERDICTS_REPORT || '');
+                if (verdicts) b += '\n' + verdicts;
               }
               if (existing) {
                 await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body: b });
@@ -553,73 +635,4 @@ jobs:
               }
             } catch (e) {
               core.setFailed(`summary comment: ${e.message}`);
-            }
-
-      # The decisions live in scripts/thread-sync.mjs, and the reusable
-      # workflow a consumer calls uses that same file — one implementation,
-      # not two. Two implementations side by side is how the fork
-      # web3eco/shared-actions ended up with two behaviours for the same
-      # step: the behaviour was never written down. See issue #38.
-      #
-      # The contract this implements is in docs/thread-sync-contract.md. It
-      # says what the class marker means, what the CANON map folds, and what
-      # a finding that did not move does. Read it before changing any of
-      # them: a consumer reads its own comments back, and a change that
-      # breaks the marker breaks the next run silently.
-      #
-      # The checkout above already fetched the repository, so the module is
-      # on disk; only the script is needed.
-      # The decisions live in scripts/thread-sync.mjs, and the reusable
-      # workflow a consumer calls uses that same file — one implementation,
-      # not two. Two implementations side by side is how the fork
-      # web3eco/shared-actions ended up with two behaviours for the same
-      # step: the behaviour was never written down. See issue #38.
-      #
-      # The contract this implements is in docs/thread-sync-contract.md. It
-      # says what the class marker means, what the CANON map folds, and what
-      # a finding that did not move does. Read it before changing any of
-      # them: a consumer reads its own comments back, and a change that
-      # breaks the marker breaks the next run silently.
-      #
-      # The checkout above already fetched the repository, so the module is
-      # on disk.
-      - name: Sync inline review threads
-        if: always() && github.event_name == 'pull_request'
-        continue-on-error: true
-        uses: actions/github-script@v7
-        env:
-          FINDINGS: ${{steps.review_retry.outputs.findings_json || steps.review.outputs.findings_json}}
-          MARKER: ${{ matrix.pipeline.slug }}
-          CWE_REPORT: ${{ steps.cwe.outputs.report || '{}' }}
-        with:
-          script: |
-            // The step is not here: it is in scripts/thread-sync.mjs, and the
-            // reusable workflow (.github/workflows/thread-sync.yml) uses that
-            // same file. What is here is the wiring.
-            //
-            // `import()`, not `require()`: the module is ESM and
-            // actions/github-script runs on node20, where `require()` of an
-            // ES module is not available on every runner image.
-            const path = require('node:path');
-            const SRC = path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'thread-sync.mjs');
-
-            let findings = [];
-            try { findings = JSON.parse(process.env.FINDINGS || '[]'); } catch {}
-            if (!Array.isArray(findings)) findings = [];
-            let cwe = {};
-            try { cwe = JSON.parse(process.env.CWE_REPORT || '{}'); } catch {}
-
-            try {
-              const { syncThreads } = await import(SRC);
-              const r = await syncThreads({
-                github, context, findings,
-                marker: process.env.MARKER,
-                verified: cwe.verified || {},
-                warn: (m) => core.warning(m),
-              });
-              core.info(`threads(${process.env.MARKER}) — ${r.posted} posted, ${r.resolved} resolved, ${r.replaced} replaced, ${r.skipped} suppressed`);
-            } catch (e) {
-              core.warning(`thread sync FAILED — inline threads not synced: ${e.message}`);
-              await core.summary.addHeading('Inline thread sync failed', 3)
-                .addRaw(e.message).write();
             }
