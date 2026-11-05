@@ -116,6 +116,22 @@ jobs:
       - name: A pipeline declares what its last stage produces
         run: node scripts/check-pipeline-outputs.mjs
 
+      # The audit was measured for the first time in November 2026, and every
+      # measurement was a number without an answer: "the pipeline found 7
+      # findings on this diff". The corpus in fixtures/security-audit/ is the
+      # answer — seven cases, one weakness each, and a near-miss next to it
+      # that must not be reported.
+      #
+      # A corpus that does not hold together measures nothing, and it fails
+      # quietly: a case with no expectation is never checked, a hunk header
+      # that does not match its body makes the model read the wrong line, and
+      # a case longer than the spec's limit cannot be run at all — it is
+      # simply absent from the results. This check says which of those it is.
+      #
+      # It needs no network and no token: it reads the corpus and the spec.
+      - name: The security audit corpus holds together
+        run: node fixtures/security-audit/check-cases.mjs
+
       # A stage whose answer is not valid JSON used to end the run on the first
       # attempt, and the two stages before it had already been paid for. The
       # runtime can recover since 0.5.1; this check proves the published

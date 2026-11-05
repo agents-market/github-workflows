@@ -1,0 +1,271 @@
+{
+  "_comment": "The known answer for each case. The pipeline sees the diff and nothing else — no file list, no repository, no expectation file — so this is the answer the runs are measured against. `expect` is the one weakness the diff contains; `cwe` lists every class name that names THAT weakness, because the pipeline does not use one class per weakness (it named the same OAuth weakness CWE-352 in two runs and CWE-287 in the third). `lines` narrows a rule to a range of the new file; without it the rule covers the whole file. `must_not_report` are the near-misses planted next to the weakness: safe code where a finding of that class is a false positive.",
+  "cases": {
+    "race-ownership": {
+      "language": "typescript",
+      "expect": {
+        "file": "src/wallet/transfer.ts",
+        "cwe": [
+          "CWE-362",
+          "CWE-367"
+        ],
+        "lines": [
+          [
+            5,
+            25
+          ]
+        ]
+      },
+      "must_not_report": [
+        {
+          "file": "src/wallet/balance.ts",
+          "cwe": [
+            "CWE-89"
+          ],
+          "why": "the balance query in the module next to it is a parameterized template tag"
+        }
+      ],
+      "what": "the ownership check and the money movement are separated by awaits, so the owner can change in between (CWE-362, a race on the owner of the wallet)"
+    },
+    "oauth-state": {
+      "language": "typescript",
+      "expect": {
+        "file": "src/auth/google-callback.ts",
+        "cwe": [
+          "CWE-352",
+          "CWE-346",
+          "CWE-287"
+        ],
+        "lines": [
+          [
+            5,
+            27
+          ]
+        ]
+      },
+      "must_not_report": [
+        {
+          "file": "src/auth/session.ts",
+          "cwe": [
+            "CWE-89"
+          ],
+          "why": "the session lookup is a parameterized template tag"
+        },
+        {
+          "file": "src/auth/oauth-client.ts",
+          "cwe": [
+            "CWE-798"
+          ],
+          "why": "the client secret comes from the environment"
+        }
+      ],
+      "what": "the OAuth callback stores the `state` it was given and never compares it with the session, so it accepts a state it did not issue (CWE-352)"
+    },
+    "workflow-shell": {
+      "language": "generic",
+      "expect": {
+        "file": ".github/workflows/notify.yml",
+        "cwe": [
+          "CWE-78",
+          "CWE-94",
+          "CWE-77",
+          "CWE-88"
+        ],
+        "lines": [
+          [
+            12,
+            15
+          ]
+        ]
+      },
+      "must_not_report": [
+        {
+          "file": ".github/workflows/notify.yml",
+          "cwe": [
+            "CWE-78",
+            "CWE-94",
+            "CWE-77",
+            "CWE-88"
+          ],
+          "lines": [
+            [
+              4,
+              10
+            ]
+          ],
+          "why": "the title reaches the shell through `env:` and a quoted variable, so its content is never expanded a second time; the other step labels with a fixed name"
+        }
+      ],
+      "what": "one step interpolates the pull request title straight into a shell line, so a pull request title runs commands (CWE-78)"
+    },
+    "sql-concat": {
+      "language": "typescript",
+      "expect": {
+        "file": "src/reports/by-id.ts",
+        "cwe": [
+          "CWE-89"
+        ],
+        "lines": [
+          [
+            4,
+            13
+          ]
+        ]
+      },
+      "must_not_report": [
+        {
+          "file": "src/reports/by-id.ts",
+          "cwe": [
+            "CWE-89"
+          ],
+          "lines": [
+            [
+              15,
+              25
+            ]
+          ],
+          "why": "the handler next to it binds its parameters"
+        },
+        {
+          "file": "src/reports/list.ts",
+          "cwe": [
+            "CWE-89"
+          ],
+          "why": "every query in that file is a parameterized template tag"
+        }
+      ],
+      "what": "the report lookup pastes the `id` parameter into the SQL text (CWE-89)"
+    },
+    "path-traversal": {
+      "language": "typescript",
+      "expect": {
+        "file": "src/files/download.ts",
+        "cwe": [
+          "CWE-22",
+          "CWE-23",
+          "CWE-36"
+        ],
+        "lines": [
+          [
+            5,
+            15
+          ]
+        ]
+      },
+      "must_not_report": [
+        {
+          "file": "src/files/download.ts",
+          "cwe": [
+            "CWE-22",
+            "CWE-23",
+            "CWE-36"
+          ],
+          "lines": [
+            [
+              17,
+              24
+            ]
+          ],
+          "why": "the third handler resolves the path and checks that it stays inside the directory"
+        },
+        {
+          "file": "src/files/upload.ts",
+          "cwe": [
+            "CWE-22",
+            "CWE-73"
+          ],
+          "why": "the name is a generated uuid and the type is allowlisted"
+        }
+      ],
+      "what": "two download handlers join a request parameter onto the files directory without checking where it points (CWE-22)"
+    },
+    "token-log": {
+      "language": "typescript",
+      "expect": {
+        "file": "src/http/client.ts",
+        "cwe": [
+          "CWE-532",
+          "CWE-200",
+          "CWE-215"
+        ],
+        "lines": [
+          [
+            3,
+            7
+          ]
+        ]
+      },
+      "must_not_report": [
+        {
+          "file": "src/http/client.ts",
+          "cwe": [
+            "CWE-532",
+            "CWE-200",
+            "CWE-215"
+          ],
+          "lines": [
+            [
+              16,
+              29
+            ]
+          ],
+          "why": "the second function logs the length of the token, not the token"
+        },
+        {
+          "file": "src/http/keys.ts",
+          "cwe": [
+            "CWE-798"
+          ],
+          "why": "the service key comes from the environment"
+        }
+      ],
+      "what": "the caller writes the whole bearer token into the log (CWE-532)"
+    },
+    "missing-authorization": {
+      "language": "typescript",
+      "expect": {
+        "file": "src/admin/users.ts",
+        "cwe": [
+          "CWE-862",
+          "CWE-863",
+          "CWE-306"
+        ],
+        "lines": [
+          [
+            4,
+            8
+          ]
+        ]
+      },
+      "must_not_report": [
+        {
+          "file": "src/admin/users.ts",
+          "cwe": [
+            "CWE-862",
+            "CWE-863",
+            "CWE-306"
+          ],
+          "lines": [
+            [
+              10,
+              15
+            ],
+            [
+              17,
+              21
+            ]
+          ],
+          "why": "the two routes next to it call `requireRole`"
+        },
+        {
+          "file": "src/admin/guard.ts",
+          "cwe": [
+            "CWE-89"
+          ],
+          "why": "the role lookup is a parameterized template tag"
+        }
+      ],
+      "what": "the route that deactivates a user checks nobody's role, while the routes next to it call `requireRole` (CWE-862)"
+    }
+  }
+}

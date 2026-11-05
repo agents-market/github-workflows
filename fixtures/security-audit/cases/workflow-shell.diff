@@ -1,0 +1,30 @@
+diff --git a/.github/workflows/notify.yml b/.github/workflows/notify.yml
+index 1b6e180..5d59917 100644
+--- a/.github/workflows/notify.yml
++++ b/.github/workflows/notify.yml
+@@ -2,5 +2,14 @@
+        - uses: actions/checkout@v4
+  
+        - name: Say hello
++        env:
++          PR_TITLE: ${{ github.event.pull_request.title }}
++          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          run: |
+-          echo "hello"
++          printf '%s\n' "$PR_TITLE" > "$RUNNER_TEMP/pr-title.txt"
++          echo "hello, $PR_AUTHOR" >> "$GITHUB_STEP_SUMMARY"
++
++      - name: Post to the chat
++        run: |
++          echo "notifying about ${{ github.event.pull_request.title }}"
++          curl -sS -X POST "$CHAT_WEBHOOK" -d "{\"text\":\"${{ github.event.pull_request.title }}\"}"
+diff --git a/.github/workflows/notify.yml.bak b/.github/workflows/notify.yml.bak
+index 077d9cd..a618dc3 100644
+--- a/.github/workflows/notify.yml.bak
++++ b/.github/workflows/notify.yml.bak
+@@ -5,4 +5,4 @@
+    notify:
+      runs-on: ubuntu-latest
+      steps:
+-      - run: echo "old version"
++      - run: echo "old version, kept for reference"

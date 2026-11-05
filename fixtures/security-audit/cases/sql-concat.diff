@@ -1,0 +1,71 @@
+diff --git a/src/reports/README.md b/src/reports/README.md
+index 8a15a17..c992c58 100644
+--- a/src/reports/README.md
++++ b/src/reports/README.md
+@@ -1,2 +1,4 @@
+ # Reports
+  
++Reports are read by id or by title.
++
+diff --git a/src/reports/by-id.ts b/src/reports/by-id.ts
+index 891e410..1c69e7e 100644
+--- a/src/reports/by-id.ts
++++ b/src/reports/by-id.ts
+@@ -1,8 +1,25 @@
+ import { sql } from '../db';
++import { currentUser } from '../auth/current-user';
+  
+  export async function reportById(req: Request) {
++  const owner = await currentUser(req);
+    const url = new URL(req.url);
+    const id = url.searchParams.get('id');
+-  const rows = await sql`select id, title, body from reports where id = ${id}`;
++
++  const rows = await sql.query(
++    `select id, title, body from reports where id = '${id}' and owner_id = '${owner.id}'`
++  );
++  return Response.json(rows[0] ?? null);
++}
++
++export async function reportByTitle(req: Request) {
++  const owner = await currentUser(req);
++  const url = new URL(req.url);
++  const title = url.searchParams.get('title');
++
++  const rows = await sql`
++    select id, title, body from reports
++    where title = ${title} and owner_id = ${owner.id} and visible = true
++  `;
+    return Response.json(rows[0] ?? null);
+  }
+\ No newline at end of file
+diff --git a/src/reports/list.ts b/src/reports/list.ts
+index 42e7fe1..b6e7466 100644
+--- a/src/reports/list.ts
++++ b/src/reports/list.ts
+@@ -1,5 +1,22 @@
+ import { sql } from '../db';
++import { currentUser } from '../auth/current-user';
+  
+-export async function listReports(limit: number) {
+-  const rows = await sql`select id, title from reports order by id limit ${limit}`;
++const MAX_PAGE = 200;
++
++export async function listReports(req: Request) {
++  const owner = await currentUser(req);
++  const rows = await sql`
++    select id, title from reports
++    where owner_id = ${owner.id} and visible = true
++    order by id limit ${MAX_PAGE}
++  `;
++  return rows;
++}
++
++export async function countVisibleReports(req: Request) {
++  const owner = await currentUser(req);
++  const rows = await sql`
++    select count(*) as n from reports where owner_id = ${owner.id} and visible = true
++  `;
++  return Number(rows[0]?.n ?? 0);
+  }
+\ No newline at end of file

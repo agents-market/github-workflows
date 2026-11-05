@@ -1,0 +1,65 @@
+diff --git a/src/files/config.ts b/src/files/config.ts
+index f31a0c6..17101a9 100644
+--- a/src/files/config.ts
++++ b/src/files/config.ts
+@@ -1,3 +1,5 @@
+ import { resolve } from 'node:path';
+  
++export const FILES_DIR = resolve(process.cwd(), 'storage');
++
+  export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+\ No newline at end of file
+diff --git a/src/files/download.ts b/src/files/download.ts
+index e69de29..c8d9bac 100644
+--- a/src/files/download.ts
++++ b/src/files/download.ts
+@@ -0,0 +1,24 @@
++import { join, resolve, sep } from 'node:path';
++import { readFile } from 'node:fs/promises';
++import { FILES_DIR } from './config';
++
++export async function download(req: Request) {
++  const name = new URL(req.url).searchParams.get('name');
++  const path = join(FILES_DIR, name);
++  return new Response(await readFile(path));
++}
++
++export async function downloadUserAvatar(req: Request) {
++  const userId = new URL(req.url).searchParams.get('user');
++  const path = join(FILES_DIR, 'avatars', `${userId}.png`);
++  return new Response(await readFile(path));
++}
++
++export async function downloadInvoice(req: Request) {
++  const name = new URL(req.url).searchParams.get('name');
++  const path = resolve(FILES_DIR, name);
++  if (!path.startsWith(resolve(FILES_DIR) + sep)) {
++    return new Response('not found', { status: 404 });
++  }
++  return new Response(await readFile(path));
++}
+diff --git a/src/files/upload.ts b/src/files/upload.ts
+index e69de29..692113d 100644
+--- a/src/files/upload.ts
++++ b/src/files/upload.ts
+@@ -0,0 +1,20 @@
++import { randomUUID } from 'node:crypto';
++import { writeFile } from 'node:fs/promises';
++import { join } from 'node:path';
++import { FILES_DIR, MAX_UPLOAD_BYTES } from './config';
++
++const ALLOWED_TYPES = new Map([
++  ['image/png', 'png'],
++  ['image/jpeg', 'jpg'],
++  ['application/pdf', 'pdf'],
++]);
++
++export async function storeUpload(bytes: Buffer, contentType: string) {
++  const extension = ALLOWED_TYPES.get(contentType);
++  if (!extension) throw new UnsupportedMediaTypeError();
++  if (bytes.length > MAX_UPLOAD_BYTES) throw new PayloadTooLargeError();
++
++  const name = `${randomUUID()}.${extension}`;
++  await writeFile(join(FILES_DIR, name), bytes, { flag: 'wx', mode: 0o600 });
++  return name;
++}

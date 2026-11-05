@@ -1,0 +1,56 @@
+diff --git a/src/admin/README.md b/src/admin/README.md
+index 5eea467..2661347 100644
+--- a/src/admin/README.md
++++ b/src/admin/README.md
+@@ -1,2 +1,4 @@
+ # Admin
+  
++The admin routes change what a user can do.
++
+diff --git a/src/admin/guard.ts b/src/admin/guard.ts
+index e69de29..c70a8d4 100644
+--- a/src/admin/guard.ts
++++ b/src/admin/guard.ts
+@@ -0,0 +1,15 @@
++import { sql } from '../db';
++import { sessionIdFromRequest } from '../auth/session';
++
++export async function requireRole(req: Request, role: string) {
++  const sessionId = sessionIdFromRequest(req);
++  if (!sessionId) throw new Response('forbidden', { status: 403 });
++
++  const rows = await sql`
++    select role from sessions where id = ${sessionId} and expires_at > now()
++  `;
++  const found = rows[0]?.role;
++  if (found !== role) {
++    throw new Response('forbidden', { status: 403 });
++  }
++}
+diff --git a/src/admin/users.ts b/src/admin/users.ts
+index 72dd2e8..e55b8f1 100644
+--- a/src/admin/users.ts
++++ b/src/admin/users.ts
+@@ -1,12 +1,21 @@
+ import { users } from '../db/users';
++import { requireRole } from './guard';
+  
+  export async function deactivateUser(req: Request) {
+    const id = new URL(req.url).searchParams.get('id');
+    await users.deactivate(id);
+    return Response.json({ ok: true });
+  }
++
++export async function deactivateUserAsAdmin(req: Request) {
++  const id = new URL(req.url).searchParams.get('id');
++  await requireRole(req, 'admin');
++  await users.deactivate(id);
++  return Response.json({ ok: true });
++}
+  
+  export async function listUsers(req: Request) {
++  await requireRole(req, 'admin');
+    const rows = await sql`select id, email, active from users order by id`;
+    return Response.json(rows);
+  }
+\ No newline at end of file

@@ -1,0 +1,112 @@
+diff --git a/src/auth/google-callback.ts b/src/auth/google-callback.ts
+index 3e8eb2e..d2c679b 100644
+--- a/src/auth/google-callback.ts
++++ b/src/auth/google-callback.ts
+@@ -1,13 +1,27 @@
+ import { oauth2Client } from './oauth-client';
+  import { users } from '../db/users';
++import { sessions } from '../db/sessions';
+  
+  export async function handleGoogleCallback(req: Request): Promise<Response> {
+-  const code = new URL(req.url).searchParams.get('code');
+-  const ticket = await oauth2Client.verifyIdToken({ idToken: code });
+-  const profile = await fetchGoogleProfile(ticket);
++  const params = new URL(req.url).searchParams;
++  const code = params.get('code');
++  const state = params.get('state');
++  if (!code) return Response.redirect('/login?error=missing-code');
++
++  const tokens = await oauth2Client.exchangeCode(code);
++  const profile = await fetchGoogleProfile(tokens);
++  if (!profile.emailVerified) return Response.redirect('/login?error=unverified-email');
+  
+    const user = await users.findByEmail(profile.email);
+    if (!user) return Response.redirect('/login?error=no-account');
++
++  const sessionId = await sessions.create({
++    userId: user.id,
++    createdAt: new Date().toISOString(),
++    state,
++  });
+  
+-  return Response.redirect('/dashboard');
++  return Response.redirect('/dashboard', {
++    headers: { 'set-cookie': `session=${sessionId}; HttpOnly; Secure; SameSite=Lax` },
++  });
+  }
+\ No newline at end of file
+diff --git a/src/auth/oauth-client.ts b/src/auth/oauth-client.ts
+index 106773d..6ef10dd 100644
+--- a/src/auth/oauth-client.ts
++++ b/src/auth/oauth-client.ts
+@@ -1,13 +1,38 @@
+ import { createOAuth2Client } from '../vendor/google';
+  
++const ALLOWED_REDIRECT_HOSTS = ['app.example.com'];
++
++function redirectUri(): string {
++  const base = process.env.APP_BASE_URL;
++  if (!base) return 'https://app.example.com/auth/google/callback';
++  const url = new URL(base);
++  if (url.protocol !== 'https:' || !ALLOWED_REDIRECT_HOSTS.includes(url.host)) {
++    throw new Error('APP_BASE_URL is not an allowed redirect target');
++  }
++  return `${url.origin}/auth/google/callback`;
++}
++
+  export const oauth2Client = createOAuth2Client({
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+-  redirectUri: 'https://app.example.com/auth/google/callback',
++  redirectUri: redirectUri(),
+    scopes: ['openid', 'email', 'profile'],
+  });
+  
+-export async function fetchGoogleProfile(ticket: { payload: Record<string, string> }) {
+-  const email = ticket.payload['email'];
+-  return { email, name: ticket.payload['name'] ?? '' };
++export async function fetchGoogleProfile(tokens: { id_token: string }) {
++  const ticket = await oauth2Client.verifyIdToken({ idToken: tokens.id_token });
++  const payload = ticket.payload;
++  if (payload['iss'] !== 'https://accounts.google.com') {
++    throw new Error('unexpected token issuer');
++  }
++  if (payload['aud'] !== process.env.GOOGLE_CLIENT_ID) {
++    throw new Error('unexpected token audience');
++  }
++  const email = payload['email'];
++  if (!email) throw new Error('the token carries no email');
++  return {
++    email,
++    name: payload['name'] ?? '',
++    emailVerified: payload['email_verified'] === true,
++  };
+  }
+\ No newline at end of file
+diff --git a/src/auth/session.ts b/src/auth/session.ts
+index e69de29..8f1f9ef 100644
+--- a/src/auth/session.ts
++++ b/src/auth/session.ts
+@@ -0,0 +1,22 @@
++import { sql } from '../db';
++
++export function sessionIdFromRequest(req: Request): string | null {
++  const header = req.headers.get('cookie') ?? '';
++  const match = header.match(/(?:^|;\s*)session=([A-Za-z0-9_-]+)/);
++  return match ? match[1] : null;
++}
++
++export async function currentSession(req: Request) {
++  const sessionId = sessionIdFromRequest(req);
++  if (!sessionId) return null;
++  const rows = await sql`
++    select user_id from sessions where id = ${sessionId} and expires_at > now()
++  `;
++  return rows[0] ?? null;
++}
++
++export async function dropSession(req: Request) {
++  const sessionId = sessionIdFromRequest(req);
++  if (!sessionId) return;
++  await sql`delete from sessions where id = ${sessionId}`;
++}

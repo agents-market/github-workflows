@@ -1,0 +1,71 @@
+diff --git a/src/wallet/README.md b/src/wallet/README.md
+index e69de29..4ea016a 100644
+--- a/src/wallet/README.md
++++ b/src/wallet/README.md
+@@ -0,0 +1,5 @@
++# Wallet
++
++Transfers move money from one wallet to another. The caller must own the
++source wallet.
++
+diff --git a/src/wallet/balance.ts b/src/wallet/balance.ts
+index e69de29..caab375 100644
+--- a/src/wallet/balance.ts
++++ b/src/wallet/balance.ts
+@@ -0,0 +1,8 @@
++import { sql } from '../db';
++
++export async function walletBalance(userId: string, walletId: string) {
++  const rows = await sql`
++    select balance from wallets where id = ${walletId} and owner_id = ${userId}
++  `;
++  return rows[0]?.balance ?? 0n;
++}
+diff --git a/src/wallet/transfer.spec.ts b/src/wallet/transfer.spec.ts
+index e69de29..45354ac 100644
+--- a/src/wallet/transfer.spec.ts
++++ b/src/wallet/transfer.spec.ts
+@@ -0,0 +1,13 @@
++import { transferFunds } from './transfer';
++
++describe('transferFunds', () => {
++  it('refuses a wallet the caller does not own', async () => {
++    await expect(
++      transferFunds('user-a', 'wallet-of-b', 'wallet-to', 10n),
++    ).rejects.toThrow(ForbiddenError);
++  });
++
++  it('moves the money', async () => {
++    await transferFunds('user-a', 'wallet-a', 'wallet-to', 10n);
++  });
++});
+diff --git a/src/wallet/transfer.ts b/src/wallet/transfer.ts
+index e69de29..5c0ccb8 100644
+--- a/src/wallet/transfer.ts
++++ b/src/wallet/transfer.ts
+@@ -0,0 +1,25 @@
++import { db } from '../db';
++import { ledger } from '../ledger';
++import { auditTrail } from '../audit';
++
++export async function transferFunds(userId: string, walletId: string, to: string, amount: bigint) {
++  if (amount <= 0n) throw new InvalidAmountError();
++
++  const wallet = await db.wallet.findUnique({ where: { id: walletId } });
++  if (!wallet || wallet.ownerId !== userId) {
++    throw new ForbiddenError('not your wallet');
++  }
++
++  await auditTrail.record({
++    event: 'wallet.transfer.requested',
++    walletId,
++    actor: userId,
++    amount: amount.toString(),
++  });
++
++  await ledger.transaction(async (tx) => {
++    const debited = await tx.debitIfEnough(walletId, amount);
++    if (!debited) throw new InsufficientFundsError();
++    await tx.credit(to, amount);
++  });
++}
